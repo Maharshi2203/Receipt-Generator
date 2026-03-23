@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Generator - WhatsApp & PDF</title>
+
+    <!--
+    ============================================================
+    STANDALONE FRONTEND - Receipt Generator
+    ============================================================
+    This is a standalone HTML file that works independently.
+    The main application uses Next.js (src/components/ReceiptView.tsx).
+    This file demonstrates the same functionality in plain HTML/CSS/JS.
+    ============================================================
+    -->
+
+    <!-- CDN: html2canvas for image generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- CDN: jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* ──────────────── RESET & BASE ──────────────── */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #FBE580;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1.page-title {
+            font-size: 24px;
+            font-weight: 900;
+            color: #18181b;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* ──────────────── BUTTONS CONTAINER ──────────────── */
+        .buttons-container {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-bottom: 24px;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        /* ──────────────── WHATSAPP BUTTON ──────────────── */
+        #whatsappBtn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 56px;
+            border-radius: 16px;
+            background-color: #059669;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 900;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px rgba(5, 150, 105, 0.2);
+        }
+
+        #whatsappBtn:hover {
+            background-color: #047857;
+            transform: translateY(-1px);
+        }
+
+        #whatsappBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ──────────────── PDF BUTTON ──────────────── */
+        #pdfBtn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 56px;
+            border-radius: 16px;
+            background-color: #09090b;
+            color: #FBE580;
+            border: none;
+            cursor: pointer;
+            font-weight: 900;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        #pdfBtn:hover {
+            background-color: #27272a;
+            transform: translateY(-1px);
+        }
+
+        #pdfBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ──────────────── RECEIPT CONTAINER ──────────────── */
+        .receipt-wrapper {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        #receipt {
+            background-color: #FDF8E8;
+            width: 100%;
+            max-width: 360px;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .receipt-inner {
+            border: 4px double #8B4513;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: #FDF8E8;
+        }
+
+        /* ──────────────── RECEIPT HEADER ──────────────── */
+        .receipt-header {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .receipt-header .mantra {
+            color: #8B4513;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .receipt-header .icon-circle {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 2px solid #8B4513;
+            background-color: #FDF8E8;
+            font-size: 24px;
+            margin: 0 auto;
+        }
+
+        .receipt-header .org-name {
+            color: #8B4513;
+            font-size: 18px;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+
+        .receipt-header .org-address {
+            color: #8B4513;
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
+        /* ──────────────── RECEIPT ROWS ──────────────── */
+        .divider {
+            border-top: 1px solid #8B4513;
+            width: 100%;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            color: #8B4513;
+        }
+
+        .row .label {
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .receipt-number {
+            border: 1px solid #8B4513;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: white;
+            color: #8B4513;
+        }
+
+        .name-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            border-bottom: 1px solid #8B4513;
+            padding-bottom: 4px;
+            color: #8B4513;
+        }
+
+        .name-row .label { font-weight: bold; font-size: 12px; white-space: nowrap; }
+        .name-row .value { font-weight: bold; font-size: 14px; flex: 1; text-transform: capitalize; }
+
+        .amount-box {
+            border: 2px solid #8B4513;
+            border-radius: 8px;
+            background-color: #FEF3C7;
+            padding: 6px 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            color: #8B4513;
+        }
+
+        .amount-box .currency { font-size: 14px; }
+        .amount-box .amount { font-size: 18px; }
+
+        .village-section {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            justify-content: flex-end;
+        }
+
+        .village-value {
+            border-bottom: 1px solid #8B4513;
+            font-weight: bold;
+            font-size: 12px;
+            padding-bottom: 2px;
+            text-align: right;
+            min-width: 60px;
+            color: #8B4513;
+        }
+
+        /* ──────────────── PARAGRAPH ──────────────── */
+        .receipt-paragraph {
+            color: #8B4513;
+            font-size: 12px;
+            line-height: 1.8;
+            text-align: justify;
+            margin: 8px 0;
+        }
+
+        .receipt-paragraph .highlight {
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        /* ──────────────── FOOTER ──────────────── */
+        .receipt-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            width: 100%;
+        }
+
+        .stamp-circle {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 1px dashed #8B4513;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #8B4513;
+            font-size: 8px;
+            font-weight: bold;
+            line-height: 1.2;
+            background-color: rgba(139, 69, 19, 0.02);
+        }
+
+        .signature-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .signature-line {
+            width: 120px;
+            border-bottom: 1px solid #8B4513;
+            opacity: 0.5;
+        }
+
+        .signature-label {
+            color: #8B4513;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        /* ──────────────── PHONE INPUT ──────────────── */
+        .phone-input-container {
+            width: 100%;
+            max-width: 360px;
+            margin-top: 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .phone-input-container label {
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #18181b;
+            white-space: nowrap;
+        }
+
+        #phoneInput {
+            flex: 1;
+            height: 44px;
+            border-radius: 12px;
+            border: 2px solid rgba(0,0,0,0.1);
+            padding: 0 12px;
+            font-size: 14px;
+            font-weight: bold;
+            background: white;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #phoneInput:focus {
+            border-color: #059669;
+        }
+
+        /* ──────────────── STATUS ──────────────── */
+        #status {
+            margin-top: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            display: none;
+            max-width: 360px;
+            width: 100%;
+            text-align: center;
+        }
+
+        #status.success {
+            display: block;
+            background: #ecfdf5;
+            color: #059669;
+            border: 1px solid #a7f3d0;
+        }
+
+        #status.error {
+            display: block;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+
+        #status.info {
+            display: block;
+            background: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #93c5fd;
+        }
+
+        /* ──────────────── SPINNER ──────────────── */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ──────────────── MOBILE RESPONSIVE ──────────────── */
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            #receipt { max-width: 100%; }
+            .buttons-container { max-width: 100%; }
+            .phone-input-container { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1 class="page-title">Receipt Generator</h1>
+
+    <!-- Phone Number Input -->
+    <div class="phone-input-container">
+        <label for="phoneInput">Phone:</label>
+        <input type="tel" id="phoneInput" value="+919898354578" placeholder="+919898354578" />
+    </div>
+
+    <!-- Status Message -->
+    <div id="status"></div>
+
+    <div style="height: 16px;"></div>
+
+    <!-- ════════════════════════════════════ -->
+    <!-- ACTION BUTTONS: WhatsApp & PDF      -->
+    <!-- ════════════════════════════════════ -->
+    <div class="buttons-container">
+        <button id="whatsappBtn">
+            <span>📱</span>
+            <span>WhatsApp</span>
+        </button>
+        <button id="pdfBtn">
+            <span>📄</span>
+            <span>PDF</span>
+        </button>
+    </div>
+
+    <!-- ════════════════════════════════════ -->
+    <!-- RECEIPT CONTAINER (id="receipt")    -->
+    <!-- ════════════════════════════════════ -->
+    <div class="receipt-wrapper">
+        <div id="receipt">
+            <div class="receipt-inner">
+                <!-- Header -->
+                <div class="receipt-header">
+                    <p class="mantra">|| શ્રી અંબેમાતાય નમઃ ||</p>
+                    <div class="icon-circle">🙏</div>
+                    <div>
+                        <h1 class="org-name">શ્રી જનકપુરિ નવરાત્રી યુવક મંડળ</h1>
+                        <p class="org-address">જનકપુરિ સોસાયટી, બનવતપુરા, હિમતનગર</p>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Number & Date -->
+                <div class="row">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="label">નંબર:</span>
+                        <span class="receipt-number">#001</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="label">તા.:</span>
+                        <span class="label">24/03/2026</span>
+                    </div>
+                </div>
+
+                <!-- Name -->
+                <div class="name-row">
+                    <span class="label">શ્રીમાન:</span>
+                    <span class="value">Nikhil Mehta</span>
+                </div>
+
+                <!-- Amount & Village -->
+                <div class="row" style="gap: 12px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="label">રૂપિયા:</span>
+                        <div class="amount-box">
+                            <span class="currency">₹</span>
+                            <span class="amount">500</span>
+                        </div>
+                    </div>
+                    <div class="village-section">
+                        <span class="label" style="white-space:nowrap;">ગામ:</span>
+                        <span class="village-value">જનકપુરિ</span>
+                    </div>
+                </div>
+
+                <!-- Paragraph -->
+                <div>
+                    <p class="receipt-paragraph">
+                        આપના તરફથી જનકપુરિ નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા
+                        <span class="highlight">500</span>
+                        અંકે રૂપિયા
+                        <span class="highlight">પાંચ સો</span>
+                        મળ્યા છે. જે સાદર સ્વીકારેલ છે.
+                    </p>
+                </div>
+
+                <!-- Footer -->
+                <div class="receipt-footer">
+                    <div class="stamp-circle">
+                        જનકપુરિ<br>હિમતનગર
+                    </div>
+                    <div class="signature-block">
+                        <div class="signature-line"></div>
+                        <p class="signature-label">પ્રમુખ / મંત્રી</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * ============================================================
+     * RECEIPT GENERATOR - FRONTEND JAVASCRIPT
+     * ============================================================
+     * 
+     * WHY FRONTEND ALONE CANNOT SEND WHATSAPP IMAGES:
+     * ────────────────────────────────────────────────
+     * 1. WhatsApp has NO public browser API for sending media
+     * 2. The wa.me links only support TEXT, NOT images
+     * 3. Sending images requires authenticated server-side API calls
+     * 4. Twilio credentials (SID, Token) are SECRET keys that
+     *    must NEVER be exposed in frontend/browser code
+     * 
+     * WHY BACKEND + TWILIO IS REQUIRED:
+     * ──────────────────────────────────
+     * 1. Twilio provides a WhatsApp Business API
+     * 2. It requires server-side authentication (Basic Auth)
+     * 3. Images must be hosted at a PUBLIC URL for Twilio to fetch
+     * 4. The backend handles: base64 → file → host → send via Twilio
+     * 
+     * HOW IMAGE HOSTING WORKS:
+     * ────────────────────────
+     * 1. Frontend captures receipt as base64 using html2canvas
+     * 2. Frontend sends base64 + phone to backend POST /send-whatsapp
+     * 3. Backend saves the image as a .png file
+     * 4. Backend serves the file via Express static (or NextJS public)
+     * 5. Backend sends the public URL to Twilio's WhatsApp API
+     * 6. Twilio downloads the image and sends it via WhatsApp
+     * ============================================================
+     */
+
+    // Backend API URL - change this if using the standalone Express backend
+    const BACKEND_URL = "http://localhost:3000/api/send-whatsapp"; // Next.js API route
+    // const BACKEND_URL = "http://localhost:3001/send-whatsapp"; // Standalone Express
+
+    /**
+     * Show status message to user
+     */
+    function showStatus(message, type) {
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = message;
+        statusEl.className = type; // 'success', 'error', or 'info'
+    }
+
+    // ════════════════════════════════════
+    // WHATSAPP BUTTON EVENT LISTENER
+    // ════════════════════════════════════
+    document.getElementById("whatsappBtn").addEventListener("click", sendToWhatsApp);
+
+    /**
+     * WHATSAPP FUNCTION - Sends receipt IMAGE via backend API
+     * 
+     * Steps:
+     * 1. Capture receipt using html2canvas with scale: 2
+     * 2. Convert canvas to base64 image
+     * 3. Send base64 image to backend using fetch POST request
+     * 4. Include: { image: base64, phone: user number with country code }
+     * 5. Show success alert after sending
+     */
+    async function sendToWhatsApp() {
+        const btn = document.getElementById("whatsappBtn");
+        const receipt = document.getElementById("receipt");
+        const phone = document.getElementById("phoneInput").value.trim();
+
+        // Validate phone number
+        if (!phone || !/^\+\d{10,15}$/.test(phone)) {
+            showStatus("❌ Invalid phone number. Use format: +919898354578", "error");
+            return;
+        }
+
+        // Disable button to prevent duplicate clicks while processing
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> <span>Sending...</span>';
+        showStatus("📱 Capturing receipt and sending to WhatsApp...", "info");
+
+        try {
+            // Step 1: Capture receipt container using html2canvas
+            // scale: 2 ensures high resolution output for clear image
+            const canvas = await html2canvas(receipt, { scale: 2 });
+
+            // Step 2: Convert canvas to base64 encoded PNG image
+            const base64Image = canvas.toDataURL("image/png");
+
+            // Step 3: Send base64 image to backend using fetch POST request
+            // Include: { image: base64, phone: user number with country code }
+            const response = await fetch(BACKEND_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: base64Image,  // base64 encoded receipt image
+                    phone: phone         // phone number with country code (e.g., +919898354578)
+                })
+            });
+
+            const result = await response.json();
+
+            // Step 5: Show success/error alert after sending
+            if (result.success) {
+                if (result.manualShare) {
+                    // Twilio not configured — fallback to manual sharing
+                    // Download the image first
+                    const link = document.createElement("a");
+                    link.href = base64Image;
+                    link.download = "receipt.png";
+                    link.click();
+
+                    // Open WhatsApp with text (fallback)
+                    // NOTE: WhatsApp Web API only supports text
+                    // Image must be downloaded first, user attaches manually
+                    // This is a limitation of WhatsApp Web API
+                    const message = encodeURIComponent("Here is your receipt.");
+                    window.open("https://wa.me/?text=" + message, "_blank");
+
+                    showStatus("📋 Twilio not configured. Image downloaded — attach manually in WhatsApp.", "info");
+                } else {
+                    showStatus("✅ Receipt sent to WhatsApp (" + phone + ") successfully!", "success");
+                }
+            } else {
+                showStatus("❌ Failed: " + (result.error || "Unknown error"), "error");
+            }
+        } catch (error) {
+            console.error("WhatsApp share error:", error);
+
+            // Fallback: download image + open WhatsApp text
+            try {
+                const canvas = await html2canvas(receipt, { scale: 2 });
+                const imageData = canvas.toDataURL("image/png");
+                const link = document.createElement("a");
+                link.href = imageData;
+                link.download = "receipt.png";
+                link.click();
+
+                const message = encodeURIComponent("Here is your receipt.");
+                window.open("https://wa.me/?text=" + message, "_blank");
+            } catch (e) {
+                console.error("Fallback failed:", e);
+            }
+
+            showStatus("⚠️ Backend unreachable. Receipt image downloaded — attach manually in WhatsApp.", "error");
+        } finally {
+            // Re-enable button
+            btn.disabled = false;
+            btn.innerHTML = '<span>📱</span> <span>WhatsApp</span>';
+        }
+    }
+
+    // ════════════════════════════════════
+    // PDF BUTTON EVENT LISTENER
+    // ════════════════════════════════════
+    document.getElementById("pdfBtn").addEventListener("click", downloadPDF);
+
+    /**
+     * PDF FUNCTION - Downloads receipt as PDF
+     * 
+     * Steps:
+     * 1. Capture receipt using html2canvas with scale: 2
+     * 2. Convert canvas to image (base64 PNG)
+     * 3. Initialize jsPDF (A4 size, portrait, millimeters)
+     * 4. Maintain correct width/height ratio
+     * 5. Add image to PDF
+     * 6. Download as "receipt.pdf"
+     */
+    async function downloadPDF() {
+        const btn = document.getElementById("pdfBtn");
+        const receipt = document.getElementById("receipt");
+
+        // Disable button to prevent duplicate clicks
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> <span>Generating...</span>';
+        showStatus("📄 Generating PDF...", "info");
+
+        try {
+            // Step 1: Capture receipt using html2canvas
+            // scale: 2 for high resolution output
+            const canvas = await html2canvas(receipt, { scale: 2 });
+
+            // Step 2: Convert canvas to base64 PNG image
+            const imgData = canvas.toDataURL("image/png");
+
+            // Step 3: Initialize jsPDF
+            // "p" = portrait orientation
+            // "mm" = millimeters as measurement unit
+            // "a4" = A4 paper size (210mm x 297mm)
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF("p", "mm", "a4");
+
+            // Step 4: Maintain correct width/height ratio
+            // A4 width = 210mm, calculate proportional height
+            const imgWidth = 210;
+            const imgHeight = canvas.height * imgWidth / canvas.width;
+
+            // Step 5: Add image to PDF at position (0, 0)
+            pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+
+            // Step 6: Download as "receipt.pdf"
+            pdf.save("receipt.pdf");
+
+            showStatus("✅ PDF downloaded successfully!", "success");
+        } catch (error) {
+            console.error("PDF generation error:", error);
+            showStatus("❌ Failed to generate PDF. Please try again.", "error");
+        } finally {
+            // Re-enable button
+            btn.disabled = false;
+            btn.innerHTML = '<span>📄</span> <span>PDF</span>';
+        }
+    }
+    </script>
+</body>
+</html>
