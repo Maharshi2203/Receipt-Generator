@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, Plus } from "lucide-react"
 import { numberToWords } from "@/lib/utils"
-import { supabase } from "@/lib/supabase"
+import { saveReceipt } from "@/lib/receipt-service"
 
 interface ReceiptFormProps {
   userId: string
@@ -40,140 +40,137 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
     setLoading(true)
 
     try {
-        const { data, error } = await supabase
-          .from("receipts")
-          .insert({
-            user_id: userId,
-            payer_name: payerName,
-            amount: parseFloat(amount),
-            payment_mode: paymentMode,
-            description,
-            receipt_date: date,
-            village: village || "જનકપુરિ",
-          })
-          .select()
-          .single()
+      const response = await saveReceipt({
+        user_id: userId,
+        payer_name: payerName,
+        amount: parseFloat(amount),
+        payment_mode: paymentMode,
+        description,
+        receipt_date: date,
+        village: village || "જનકપુરિ",
+      })
 
-        if (error) throw error
-        onSuccess(data)
-        
-        // Reset form
-        setPayerName("")
-        setAmount("")
-        setVillage("")
-        setDescription("")
-      } catch (error: any) {
-        console.error("Error creating receipt:", error)
-        alert("Error creating receipt: " + (error.message || JSON.stringify(error)))
-      } finally {
+      if (!response.success) throw new Error(response.error)
+      
+      onSuccess(response.data)
+
+      // Reset form
+      setPayerName("")
+      setAmount("")
+      setVillage("")
+      setDescription("")
+    } catch (error: any) {
+      console.error("Error creating receipt:", error)
+      alert("Error creating receipt: " + (error.message || JSON.stringify(error)))
+    } finally {
       setLoading(false)
     }
   }
 
-    return (
-      <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] p-6 shadow-2xl shadow-black/5 border border-white/50">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                  <Label htmlFor="payer" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">શ્રીમાન (Name)</Label>
-                  <Input
-                    id="payer"
-                    placeholder="Full Name"
-                    className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
-                    value={payerName}
-                    onChange={(e) => setPayerName(e.target.value)}
-                    required
-                  />
-                </div>
+  return (
+    <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] p-6 shadow-2xl shadow-black/5 border border-white/50">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="payer" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">શ્રીમાન (Name)</Label>
+              <Input
+                id="payer"
+                placeholder="Full Name"
+                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
+                value={payerName}
+                onChange={(e) => setPayerName(e.target.value)}
+                required
+              />
+            </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="village" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">ગામ (Village)</Label>
-                  <Input
-                    id="village"
-                    placeholder="જનકપુરિ"
-                    className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
-                    value={village}
-                    onChange={(e) => setVillage(e.target.value)}
-                  />
-                </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="amount" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Amount (₹)</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    placeholder="0.00"
-                    className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all text-lg font-black text-zinc-900 placeholder:text-zinc-300"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
-                  />
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="village" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">ગામ (Village)</Label>
+              <Input
+                id="village"
+                placeholder="જનકપુરિ"
+                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
+                value={village}
+                onChange={(e) => setVillage(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Amount (₹)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all text-lg font-black text-zinc-900 placeholder:text-zinc-300"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                />
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="mode" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Payment Mode</Label>
-                <Select value={paymentMode} onValueChange={setPaymentMode}>
-                  <SelectTrigger className="h-14 bg-zinc-50 border-none rounded-2xl focus:ring-1 focus:ring-zinc-200 transition-all font-bold text-zinc-900">
-                    <SelectValue placeholder="Select mode" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-zinc-100 rounded-2xl shadow-2xl">
-                    <SelectItem value="Cash" className="font-bold">Cash</SelectItem>
-                    <SelectItem value="GPay" className="font-bold">GPay</SelectItem>
-                    <SelectItem value="PhonePe" className="font-bold">PhonePe</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Amount in Words</Label>
-                <div className="p-4 bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 text-[11px] italic font-bold text-zinc-500 min-h-[50px] flex items-center">
-                  {amountInWords ? (
-                    <span className="animate-in fade-in slide-in-from-left-2 duration-500">
-                      {amountInWords} Rupees Only
-                    </span>
-                  ) : (
-                    "Enter amount to generate words..."
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Purpose of payment..."
-                  className="bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-medium min-h-[100px] text-zinc-900 placeholder:text-zinc-300"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
+                <Label htmlFor="date" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Date</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
                 />
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-16 rounded-2xl bg-zinc-950 hover:bg-zinc-900 text-[#FBE580] font-black text-lg shadow-xl shadow-zinc-200 mt-4 transition-all active:scale-[0.98]" disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-6 w-6 animate-spin" />
-              ) : (
-                "Generate Receipt"
-              )}
-            </Button>
-          </form>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="mode" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Payment Mode</Label>
+              <Select value={paymentMode} onValueChange={setPaymentMode}>
+                <SelectTrigger className="h-14 bg-zinc-50 border-none rounded-2xl focus:ring-1 focus:ring-zinc-200 transition-all font-bold text-zinc-900">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-zinc-100 rounded-2xl shadow-2xl">
+                  <SelectItem value="Cash" className="font-bold">Cash</SelectItem>
+                  <SelectItem value="GPay" className="font-bold">GPay</SelectItem>
+                  <SelectItem value="PhonePe" className="font-bold">PhonePe</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Amount in Words</Label>
+              <div className="p-4 bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 text-[11px] italic font-bold text-zinc-500 min-h-[50px] flex items-center">
+                {amountInWords ? (
+                  <span className="animate-in fade-in slide-in-from-left-2 duration-500">
+                    {amountInWords} Rupees Only
+                  </span>
+                ) : (
+                  "Enter amount to generate words..."
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Purpose of payment..."
+                className="bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-medium min-h-[100px] text-zinc-900 placeholder:text-zinc-300"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <Button type="submit" className="w-full h-16 rounded-2xl bg-zinc-950 hover:bg-zinc-900 text-[#FBE580] font-black text-lg shadow-xl shadow-zinc-200 mt-4 transition-all active:scale-[0.98]" disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              "Generate Receipt"
+            )}
+          </Button>
+        </form>
       </div>
-    )
+    </div>
+  )
 
 }

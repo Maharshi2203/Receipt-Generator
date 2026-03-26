@@ -1,71 +1,27 @@
 "use client"
 
-/**
- * ============================================================
- * RECEIPT VIEW COMPONENT
- * ============================================================
- * 
- * This component displays a generated receipt and provides
- * two action buttons:
- * 
- * 1. WhatsApp Button → Sends receipt IMAGE via backend API (Twilio)
- * 2. PDF Button → Downloads receipt as PDF file
- * 
- * ============================================================
- * WHY FRONTEND ALONE CANNOT SEND WHATSAPP IMAGES:
- * ────────────────────────────────────────────────
- * - WhatsApp has NO public browser API for sending media files
- * - The wa.me links (https://wa.me/?text=...) only support TEXT
- * - Sending images requires authenticated server-to-server calls
- * - Twilio API credentials (Account SID, Auth Token) are SECRET
- *   and must NEVER be exposed in frontend/browser code
- * - Therefore, a backend server (Node.js + Twilio) is REQUIRED
- * 
- * WHY BACKEND + TWILIO IS REQUIRED:
- * ──────────────────────────────────
- * - Twilio provides a WhatsApp Business API
- * - It accepts media via a public URL (mediaUrl parameter)
- * - The backend converts the base64 image to a file, hosts it,
- *   and sends it through Twilio's authenticated API
- * - This is the ONLY reliable way to programmatically send
- *   WhatsApp images without manual user intervention
- * 
- * HOW IMAGE HOSTING WORKS:
- * ────────────────────────
- * 1. Frontend captures receipt as base64 using html2canvas
- * 2. Frontend sends base64 + phone number to backend API
- * 3. Backend saves image as .png file in /public/uploads/
- * 4. Backend constructs a public URL for the image
- * 5. Backend sends the URL to Twilio's WhatsApp API
- * 6. Twilio downloads the image and sends it to WhatsApp
- * 
- * NOTE: For Twilio to access the image, the URL must be
- * publicly accessible. Use ngrok for development or deploy
- * to a cloud server for production.
- * ============================================================
- */
-
 import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageSquare, FileText, Loader2 } from "lucide-react"
+import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
 import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
 import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
+import { supabase } from "@/lib/supabase"
+import { uploadReceiptPDF } from "@/lib/receipt-service"
 
 interface Receipt {
+  id?: string
   receipt_number: number
   payer_name: string
   amount: number
   payment_mode: string
   description: string
   receipt_date: string
-  created_at: string
   village?: string
 }
 
 interface ReceiptViewProps {
   receipt: Receipt
-  companyName?: string
   onClose?: () => void
 }
 
@@ -74,7 +30,6 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
 
-  const words = numberToWords(Math.floor(receipt.amount))
   const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
 
   const formatDate = (dateStr: string) => {
@@ -85,385 +40,193 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     return `${day}/${month}/${year}`
   }
 
-  // ──────────────────────────────────────────
-  // WHATSAPP FUNCTION
-  // ──────────────────────────────────────────
-  /**
-   * Steps:
-   * 1. Capture receipt using html2canvas (scale: 2 for high resolution)
-   * 2. Convert canvas to base64 image
-   * 3. Send base64 image to backend using fetch POST request
-   * 4. Include: { image: base64, phone: user number with country code }
-   * 5. Show success/error alert after sending
-   * 
-   * The backend handles:
-   * - Converting base64 → PNG file
-   * - Hosting the image with a public URL
-   * - Sending to WhatsApp via Twilio API
-   */
-  const handleWhatsAppShare = async () => {
-    if (!receiptRef.current) return
+  const generatePDFBlob = async (): Promise<Blob> => {
+    if (!receiptRef.current) throw new Error("Receipt element not found")
+    
+    const canvas = await html2canvas(receiptRef.current, { 
+      scale: 3, // High resolution
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#FDF8E8"
+    })
 
-    // Prevent duplicate clicks by disabling button while processing
-    setSharing(true)
+    const imgData = canvas.toDataURL("image/png")
+    const pdf = new jsPDF("p", "mm", "a4")
+    
+    // Calculate dimensions to fit centered on A4
+    const pageWidth = 210
+    const pageHeight = 297
+    const imgWidth = 140 // Slightly narrow for clean look
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    
+    const x = (pageWidth - imgWidth) / 2
+    const y = 20 // Margin from top
 
-    try {
-      // Step 1: Capture receipt container and convert to image using html2canvas
-      // Using scale: 2 for high resolution output
-      const canvas = await html2canvas(receiptRef.current, { scale: 2 })
-
-      // Step 2: Convert canvas to base64 encoded PNG image
-      const base64Image = canvas.toDataURL("image/png")
-
-      // Step 3: Get the recipient phone number
-      // Using the allowed phone from environment or prompt user
-      const phone = process.env.NEXT_PUBLIC_ALLOWED_PHONE || "+919898354578"
-
-      // Step 4: Send base64 image + phone to backend API using fetch POST
-      const response = await fetch("/api/send-whatsapp", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          image: base64Image,  // base64 encoded receipt image
-          phone: phone         // phone number with country code
-        })
-      })
-
-      const result = await response.json()
-
-      // Step 5: Show appropriate alert based on response
-      if (result.success) {
-        if (result.manualShare) {
-          // Twilio not configured — fallback to manual sharing
-          // Download the image first
-          const link = document.createElement("a")
-          link.href = base64Image
-          link.download = "receipt.png"
-          link.click()
-
-          // Open WhatsApp with text message
-          // NOTE: This is a fallback — WhatsApp Web API only supports text
-          // User must attach the downloaded image manually
-          const message = encodeURIComponent("Here is your receipt.")
-          window.open(`https://wa.me/?text=${message}`, "_blank")
-
-          alert("📋 Twilio not configured yet.\n\nReceipt image downloaded!\nPlease attach it manually in WhatsApp.\n\nTo enable auto-send, configure Twilio credentials in .env file.")
-        } else {
-          // Success! Image sent via Twilio
-          alert("✅ Receipt sent to WhatsApp successfully!")
-        }
-      } else {
-        console.error("WhatsApp send failed:", result)
-        alert("❌ Failed to send: " + (result.error || "Unknown error"))
-      }
-    } catch (error) {
-      console.error("WhatsApp share error:", error)
-
-      // Fallback: download image + open WhatsApp text
-      try {
-        const canvas = await html2canvas(receiptRef.current!, { scale: 2 })
-        const imageData = canvas.toDataURL("image/png")
-        const link = document.createElement("a")
-        link.href = imageData
-        link.download = "receipt.png"
-        link.click()
-
-        const message = encodeURIComponent("Here is your receipt.")
-        window.open(`https://wa.me/?text=${message}`, "_blank")
-      } catch (fallbackError) {
-        console.error("Fallback failed:", fallbackError)
-      }
-
-      alert("⚠️ Could not connect to backend.\nReceipt image downloaded — attach manually in WhatsApp.")
-    } finally {
-      setSharing(false)
-    }
+    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
+    return pdf.output("blob")
   }
 
-  // ──────────────────────────────────────────
-  // PDF FUNCTION
-  // ──────────────────────────────────────────
-  /**
-   * Steps:
-   * 1. Capture receipt using html2canvas with scale: 2 for high resolution
-   * 2. Convert canvas to base64 PNG image
-   * 3. Initialize jsPDF with A4 portrait orientation ("p", "mm", "a4")
-   * 4. Calculate correct width/height ratio to maintain aspect ratio
-   *    - A4 width = 210mm
-   *    - Height = canvas.height * 210 / canvas.width
-   * 5. Add image to PDF at position (0, 0) with calculated dimensions
-   * 6. Download as "receipt.pdf"
-   */
   const handleDownloadPDF = async () => {
-    if (!receiptRef.current) return
-
-    // Prevent duplicate clicks by disabling button while processing
     setDownloading(true)
-
     try {
-      // Step 1: Capture receipt using html2canvas
-      // scale: 2 ensures high resolution output
-      const canvas = await html2canvas(receiptRef.current, { scale: 2 })
-
-      // Step 2: Convert canvas to base64 PNG image
-      const imgData = canvas.toDataURL("image/png")
-
-      // Step 3: Initialize jsPDF
-      // "p" = portrait orientation
-      // "mm" = millimeters as unit
-      // "a4" = A4 paper size (210mm x 297mm)
-      const pdf = new jsPDF("p", "mm", "a4")
-
-      // Step 4: Maintain correct width/height ratio
-      // A4 width is 210mm, calculate proportional height
-      const imgWidth = 210
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-      // Step 5: Add image to PDF at position (0, 0)
-      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight)
-
-      // Step 6: Download as "receipt.pdf"
-      pdf.save("receipt.pdf")
+      const blob = await generatePDFBlob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `receipt-${receipt.receipt_number}.pdf`
+      link.click()
+      URL.revokeObjectURL(url)
     } catch (error) {
-      console.error("PDF download error:", error)
-      alert("❌ Failed to generate PDF. Please try again.")
+      console.error("PDF generation failed:", error)
+      alert("Failed to generate PDF")
     } finally {
       setDownloading(false)
     }
   }
 
+  const handleWhatsAppShare = async () => {
+    setSharing(true)
+    try {
+      // 1. Generate PDF
+      const pdfBlob = await generatePDFBlob()
+      
+      // 2. Upload using Service
+      const response = await uploadReceiptPDF(pdfBlob, receipt.receipt_number)
+      
+      if (!response.success) throw new Error(response.error)
+      
+      const publicUrl = response.url
+      
+      // 3. Open WhatsApp link
+      const phone = process.env.NEXT_PUBLIC_ALLOWED_PHONE || ""
+      const message = encodeURIComponent(`Download your receipt from Orchids: ${publicUrl}`)
+      const whatsappUrl = `https://wa.me/${phone.replace(/\+/g, "")}?text=${message}`
+      
+      window.open(whatsappUrl, "_blank")
+    } catch (error: any) {
+      console.error("WhatsApp sharing failed:", error)
+      alert(`❌ WhatsApp share error: ${error.message || "Unknown error"}\n\nMake sure Supabase Storage 'receipts' bucket is public.`)
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
-    <div className="space-y-8 animate-in fade-in zoom-in-95 duration-700">
-      {/* ──────────────────────────────────────── */}
-      {/* ACTION BUTTONS: WhatsApp & PDF           */}
-      {/* ──────────────────────────────────────── */}
-      <div className="flex gap-4 justify-center px-2 print:hidden">
-        {/* WhatsApp Button */}
+    <div className="max-w-[400px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
+      {/* Action Buttons */}
+      <div className="grid grid-cols-2 gap-4 px-2 print:hidden">
         <Button
-          id="whatsappBtn"
-          size="lg"
           onClick={handleWhatsAppShare}
           disabled={sharing}
-          className="flex-1 gap-2 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 h-14"
+          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
         >
           {sharing ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageSquare className="h-5 w-5" />}
-          <span className="font-black uppercase text-xs tracking-widest">WhatsApp</span>
+          WHATSAPP
         </Button>
 
-        {/* PDF Button */}
         <Button
-          id="pdfBtn"
-          size="lg"
           onClick={handleDownloadPDF}
           disabled={downloading}
-          className="flex-1 gap-2 rounded-2xl bg-zinc-950 text-[#FBE580] hover:bg-zinc-800 transition-all shadow-xl shadow-zinc-100 h-14"
+          className="h-14 rounded-2xl bg-black hover:bg-zinc-800 text-white font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
         >
           {downloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
-          <span className="font-black uppercase text-xs tracking-widest">PDF</span>
+          PDF DOWNLOAD
         </Button>
       </div>
 
-      {/* ──────────────────────────────────────── */}
-      {/* RECEIPT CONTAINER (id="receipt")          */}
-      {/* ──────────────────────────────────────── */}
-      <div className="group px-1">
-        <div className="overflow-hidden rounded-2xl shadow-2xl">
-            <div
-              id="receipt"
-              ref={receiptRef}
-              style={{
-                backgroundColor: '#FDF8E8',
-                width: "100%",
-                maxWidth: "360px",
-                margin: "0 auto",
-                padding: "20px",
-                fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-                boxSizing: 'border-box'
-              }}
-            >
-              <div
-                style={{
-                  border: '4px double #8B4513',
-                  backgroundColor: '#FDF8E8',
-                  borderRadius: '12px',
-                  padding: "24px",
-                  boxSizing: 'border-box',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px'
-                }}
-              >
-                {/* Header Section */}
-                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <p style={{ color: '#8B4513', fontSize: '12px', fontWeight: 'bold', margin: 0 }}>
-                    || શ્રી અંબેમાતાય નમઃ ||
-                  </p>
+      {/* Receipt Element */}
+      <div 
+        ref={receiptRef}
+        id="receipt-print-area"
+        className="bg-[#FDF8E8] w-full border-[6px] border-double border-[#8B4513] rounded-2xl p-6 shadow-2xl relative overflow-hidden"
+        style={{ width: "380px", margin: "0 auto" }}
+      >
+        {/* Decorative corner */}
+        <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-[#8B4513]/20 rounded-tr-xl pointer-events-none" />
+        
+        <div className="space-y-6 text-[#8B4513]">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
+            <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
+            <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરિ નવરાત્રી યુવક મંડળ</h1>
+            <p className="text-[10px] opacity-75">જનકપુરિ સોસાયટી, બનવતપુરા, હિમતનગર</p>
+          </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <div
-                      style={{
-                        width: '48px',
-                        height: '48px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '50%',
-                        border: '2px solid #8B4513',
-                        backgroundColor: '#FDF8E8',
-                        fontSize: '24px'
-                      }}
-                    >
-                      🙏
-                    </div>
-                  </div>
+          <div className="h-px bg-[#8B4513]/30 w-full" />
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <h1 style={{ color: '#8B4513', fontSize: '18px', fontWeight: 'bold', margin: 0, lineHeight: '1.2' }}>
-                      શ્રી જનકપુરિ નવરાત્રી યુવક મંડળ
-                    </h1>
-                    <p style={{ color: '#8B4513', fontSize: '10px', margin: 0, opacity: 0.8 }}>
-                      જનકપુરિ સોસાયટી, બનવતપુરા, હિમતનગર
-                    </p>
-                  </div>
-                </div>
+          {/* Metadata */}
+          <div className="flex justify-between items-center text-xs font-bold">
+            <div className="flex items-center gap-2">
+              <span>નંબર:</span>
+              <span className="bg-white px-2 py-1 rounded border border-[#8B4513] text-sm">
+                #{receipt.receipt_number.toString().padStart(3, '0')}
+              </span>
+            </div>
+            <div>
+              <span>તા.: </span>
+              <span>{formatDate(receipt.receipt_date)}</span>
+            </div>
+          </div>
 
-                {/* Divider */}
-                <div style={{ borderTop: '1px solid #8B4513', width: '100%' }} />
+          {/* Payer Name */}
+          <div className="border-b border-[#8B4513] pb-1 flex gap-2 items-baseline">
+            <span className="text-sm font-bold whitespace-nowrap">શ્રીમાન:</span>
+            <span className="text-lg font-black flex-1 border-b-0">{receipt.payer_name}</span>
+          </div>
 
-                {/* Number & Date Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px' }}>નંબર:</span>
-                    <span
-                      style={{
-                        color: '#8B4513',
-                        border: '1px solid #8B4513',
-                        borderRadius: '4px',
-                        padding: '2px 8px',
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      #{receipt.receipt_number.toString().padStart(3, '0')}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px' }}>તા.:</span>
-                    <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px' }}>
-                      {formatDate(receipt.receipt_date)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Name Section */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', borderBottom: '1px solid #8B4513', paddingBottom: '4px' }}>
-                  <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}>શ્રીમાન:</span>
-                  <span
-                    style={{
-                      color: '#8B4513',
-                      fontWeight: 'bold',
-                      fontSize: '14px',
-                      flex: 1,
-                      textTransform: 'capitalize'
-                    }}
-                  >
-                    {receipt.payer_name}
-                  </span>
-                </div>
-
-                {/* Amount & Village Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px' }}>રૂપિયા:</span>
-                    <div
-                      style={{
-                        color: '#8B4513',
-                        border: '2px solid #8B4513',
-                        borderRadius: '8px',
-                        backgroundColor: '#FEF3C7',
-                        padding: '6px 12px',
-                        fontWeight: 'bold',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                      }}
-                    >
-                      <span style={{ fontSize: '14px' }}>₹</span>
-                      <span style={{ fontSize: '18px' }}>{receipt.amount.toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' }}>
-                    <span style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px', whiteSpace: 'nowrap' }}>ગામ:</span>
-                    <span style={{ color: '#8B4513', borderBottom: '1px solid #8B4513', fontWeight: 'bold', fontSize: '12px', paddingBottom: '2px', textAlign: 'right', minWidth: '60px' }}>
-                      {receipt.village || "જનકપુરિ"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Paragraph Text */}
-                <div style={{ margin: '8px 0' }}>
-                  <p
-                    style={{
-                      color: '#8B4513',
-                      fontSize: '12px',
-                      lineHeight: '1.8',
-                      textAlign: 'justify',
-                      margin: 0,
-                      wordWrap: 'break-word'
-                    }}
-                  >
-                    આપના તરફથી જનકપુરિ નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
-                    <span style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{receipt.amount.toLocaleString()}</span>{' '}
-                    અંકે રૂપિયા{' '}
-                    <span style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{gujaratiWords}</span>{' '}
-                    મળ્યા છે. જે સાદર સ્વીકારેલ છે.
-                  </p>
-                </div>
-
-                {/* Footer Section */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', width: '100%' }}>
-                  <div
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '50%',
-                      border: '1px dashed #8B4513',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textAlign: 'center',
-                      color: '#8B4513',
-                      fontSize: '8px',
-                      fontWeight: 'bold',
-                      lineHeight: '1.2',
-                      backgroundColor: 'rgba(139, 69, 19, 0.02)'
-                    }}
-                  >
-                    જનકપુરિ<br/>હિમતનગર
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <div
-                      style={{
-                        width: '120px',
-                        borderBottom: '1px solid #8B4513',
-                        opacity: 0.5
-                      }}
-                    />
-                    <p style={{ color: '#8B4513', fontWeight: 'bold', fontSize: '11px', margin: 0 }}>
-                      પ્રમુખ / મંત્રી
-                    </p>
-                  </div>
-                </div>
+          {/* Amount and Village */}
+          <div className="flex justify-between items-end gap-4">
+            <div className="space-y-1">
+              <span className="text-xs font-bold">રૂપિયા:</span>
+              <div className="bg-[#FEF3C7] border-2 border-[#8B4513] rounded-xl px-4 py-2 flex items-center gap-2 shadow-sm">
+                <span className="text-sm font-bold">₹</span>
+                <span className="text-2xl font-black">{receipt.amount.toLocaleString()}</span>
               </div>
             </div>
+            <div className="flex-1 text-right space-y-1">
+              <span className="text-xs font-bold">ગામ:</span>
+              <div className="border-b border-[#8B4513] font-bold text-sm min-w-[80px] inline-block pb-1">
+                {receipt.village || "જનકપુરિ"}
+              </div>
+            </div>
+          </div>
+
+          {/* Content Text */}
+          <p className="text-xs leading-relaxed text-justify">
+            આપના તરફથી જનકપુરિ નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
+            <span className="font-bold underline decoration-[#8B4513]/40">
+              {receipt.amount.toLocaleString()}
+            </span>{' '}
+            અંકે રૂપિયા{' '}
+            <span className="font-bold underline decoration-[#8B4513]/40">
+              {gujaratiWords}
+            </span>{' '}
+            મળ્યા છે. જે સાદર સ્વીકારેલ છે.
+          </p>
+
+          {/* Footer */}
+          <div className="flex justify-between items-center pt-4">
+            <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
+              જનકપુરિ<br/>હિમતનગર
+            </div>
+            <div className="text-center space-y-1">
+              <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
+              <p className="text-[10px] font-bold">પ્રમુખ / મંત્રી</p>
+            </div>
+          </div>
         </div>
       </div>
 
+      {onClose && (
+        <Button 
+          variant="ghost" 
+          onClick={onClose} 
+          className="w-full text-zinc-400 hover:text-zinc-600 font-bold"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Form
+        </Button>
+      )}
     </div>
   )
 }
