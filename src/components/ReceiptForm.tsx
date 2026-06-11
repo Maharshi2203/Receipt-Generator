@@ -47,7 +47,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
         payment_mode: paymentMode,
         description,
         receipt_date: date,
-        village: village || "જનકપુરિ",
+        village: village || "જનકપુરી",
       })
 
       if (!response.success) throw new Error(response.error)
@@ -85,10 +85,10 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="village" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">ગામ (Village)</Label>
+              <Label htmlFor="village" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">સોસાયટી (Society)</Label>
               <Input
                 id="village"
-                placeholder="જનકપુરિ"
+                placeholder="જનકપુરી"
                 className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
                 value={village}
                 onChange={(e) => setVillage(e.target.value)}

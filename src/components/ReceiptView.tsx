@@ -149,8 +149,8 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
           <div className="text-center space-y-2">
             <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
             <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
-            <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરિ નવરાત્રી યુવક મંડળ</h1>
-            <p className="text-[10px] opacity-75">જનકપુરિ સોસાયટી, બનવતપુરા, હિમતનગર</p>
+            <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરી નવરાત્રી યુવક મંડળ</h1>
+            <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બનવતપુરા, હિમતનગર</p>
           </div>
 
           <div className="h-px bg-[#8B4513]/30 w-full" />
@@ -185,16 +185,16 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
               </div>
             </div>
             <div className="flex-1 text-right space-y-1">
-              <span className="text-xs font-bold">ગામ:</span>
+              <span className="text-xs font-bold">સોસાયટી:</span>
               <div className="border-b border-[#8B4513] font-bold text-sm min-w-[80px] inline-block pb-1">
-                {receipt.village || "જનકપુરિ"}
+                {receipt.village || "જનકપુરી"}
               </div>
             </div>
           </div>
 
           {/* Content Text */}
           <p className="text-xs leading-relaxed text-justify">
-            આપના તરફથી જનકપુરિ નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
+            આપના તરફથી જનકપુરી નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
             <span className="font-bold underline decoration-[#8B4513]/40">
               {receipt.amount.toLocaleString()}
             </span>{' '}
@@ -208,7 +208,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
           {/* Footer */}
           <div className="flex justify-between items-center pt-4">
             <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
-              જનકપુરિ<br/>હિમતનગર
+              જનકપુરી<br/>હિમતનગર
             </div>
             <div className="text-center space-y-1">
               <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
