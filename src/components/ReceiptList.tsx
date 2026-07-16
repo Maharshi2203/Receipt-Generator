@@ -66,10 +66,10 @@ export function ReceiptList({ userId, onSelect }: ReceiptListProps) {
             >
             <CardContent className="p-5 flex justify-between items-center relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-primary/10 transition-colors" />
-                <div className="space-y-1.5 relative">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-black text-primary text-xs">#{r.receipt_number.toString().padStart(3, "0")}</span>
-                    <p className="font-black text-base tracking-tight text-foreground group-hover:text-primary transition-colors">{r.payer_name}</p>
+                <div className="space-y-1.5 relative flex-1 min-w-0 mr-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono font-black text-primary text-xs flex-shrink-0">#{r.receipt_number.toString().padStart(3, "0")}</span>
+                    <p className="font-black text-base tracking-tight text-foreground group-hover:text-primary transition-colors truncate">{r.payer_name}</p>
                   </div>
                 <div className="flex items-center gap-3">
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{r.receipt_date}</p>
@@ -77,7 +77,7 @@ export function ReceiptList({ userId, onSelect }: ReceiptListProps) {
                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{r.payment_mode}</p>
                 </div>
               </div>
-              <div className="text-right flex items-center gap-5 relative">
+              <div className="text-right flex items-center gap-3 sm:gap-5 relative flex-shrink-0">
                 <div className="space-y-0.5">
                   <p className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">Amount</p>
                   <p className="font-black text-xl text-foreground tracking-tighter">₹{r.amount.toLocaleString()}</p>

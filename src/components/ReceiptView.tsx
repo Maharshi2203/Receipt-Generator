@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
 import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
@@ -27,8 +27,41 @@ interface ReceiptViewProps {
 
 export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const receiptRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [scale, setScale] = useState(1)
+  const [receiptHeight, setReceiptHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!wrapperRef.current || !receiptRef.current) return
+
+    const handleResize = () => {
+      if (wrapperRef.current && receiptRef.current) {
+        const wrapperWidth = wrapperRef.current.getBoundingClientRect().width
+        const targetWidth = 380
+        if (wrapperWidth < targetWidth) {
+          const newScale = wrapperWidth / targetWidth
+          setScale(newScale)
+          setReceiptHeight(receiptRef.current.scrollHeight * newScale)
+        } else {
+          setScale(1)
+          setReceiptHeight(null)
+        }
+      }
+    }
+
+    const observer = new ResizeObserver(() => {
+      handleResize()
+    })
+
+    observer.observe(wrapperRef.current)
+    handleResize()
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [receipt])
 
   const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
 
@@ -43,27 +76,41 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
     
-    const canvas = await html2canvas(receiptRef.current, { 
-      scale: 3, // High resolution
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#FDF8E8"
-    })
-
-    const imgData = canvas.toDataURL("image/png")
-    const pdf = new jsPDF("p", "mm", "a4")
+    // Temporarily reset CSS transform to ensure html2canvas captures full 380px size at high resolution
+    const prevTransform = receiptRef.current.style.transform
+    const prevTransformOrigin = receiptRef.current.style.transformOrigin
     
-    // Calculate dimensions to fit centered on A4
-    const pageWidth = 210
-    const pageHeight = 297
-    const imgWidth = 140 // Slightly narrow for clean look
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    receiptRef.current.style.transform = "none"
+    receiptRef.current.style.transformOrigin = "initial"
     
-    const x = (pageWidth - imgWidth) / 2
-    const y = 20 // Margin from top
+    try {
+      const canvas = await html2canvas(receiptRef.current, { 
+        scale: 3, // High resolution
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#FDF8E8"
+      })
 
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
-    return pdf.output("blob")
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF("p", "mm", "a4")
+      
+      // Calculate dimensions to fit centered on A4
+      const pageWidth = 210
+      const pageHeight = 297
+      const imgWidth = 140 // Slightly narrow for clean look
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      
+      const x = (pageWidth - imgWidth) / 2
+      const y = 20 // Margin from top
+
+      pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
+      return pdf.output("blob")
+    } finally {
+      if (receiptRef.current) {
+        receiptRef.current.style.transform = prevTransform
+        receiptRef.current.style.transformOrigin = prevTransformOrigin
+      }
+    }
   }
 
   const handleDownloadPDF = async () => {
@@ -118,7 +165,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
         <Button
           onClick={handleWhatsAppShare}
           disabled={sharing}
-          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
         >
           {sharing ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageSquare className="h-5 w-5" />}
           WHATSAPP
@@ -127,92 +174,103 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
         <Button
           onClick={handleDownloadPDF}
           disabled={downloading}
-          className="h-14 rounded-2xl bg-black hover:bg-zinc-800 text-white font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+          className="h-14 rounded-2xl bg-black hover:bg-zinc-800 text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
         >
           {downloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
           PDF DOWNLOAD
         </Button>
       </div>
 
-      {/* Receipt Element */}
+      {/* Receipt Element Wrapper (Dynamic Scale to Fit Mobile Viewports) */}
       <div 
-        ref={receiptRef}
-        id="receipt-print-area"
-        className="bg-[#FDF8E8] w-full border-[6px] border-double border-[#8B4513] rounded-2xl p-6 shadow-2xl relative overflow-hidden"
-        style={{ width: "380px", margin: "0 auto" }}
+        ref={wrapperRef} 
+        className="w-full flex justify-center overflow-hidden print:overflow-visible" 
+        style={receiptHeight ? { height: `${receiptHeight}px` } : undefined}
       >
-        {/* Decorative corner */}
-        <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-[#8B4513]/20 rounded-tr-xl pointer-events-none" />
-        
-        <div className="space-y-6 text-[#8B4513]">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
-            <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
-            <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરી નવરાત્રી યુવક મંડળ</h1>
-            <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બનવતપુરા, હિમતનગર</p>
-          </div>
-
-          <div className="h-px bg-[#8B4513]/30 w-full" />
-
-          {/* Metadata */}
-          <div className="flex justify-between items-center text-xs font-bold">
-            <div className="flex items-center gap-2">
-              <span>નંબર:</span>
-              <span className="bg-white px-2 py-1 rounded border border-[#8B4513] text-sm">
-                #{receipt.receipt_number.toString().padStart(3, '0')}
-              </span>
+        <div 
+          ref={receiptRef}
+          id="receipt-print-area"
+          className="bg-[#FDF8E8] border-[6px] border-double border-[#8B4513] rounded-2xl p-6 shadow-2xl relative overflow-hidden flex-shrink-0"
+          style={{ 
+            width: "380px", 
+            transform: `scale(${scale})`, 
+            transformOrigin: "top center",
+            margin: "0 auto"
+          }}
+        >
+          {/* Decorative corner */}
+          <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-[#8B4513]/20 rounded-tr-xl pointer-events-none" />
+          
+          <div className="space-y-6 text-[#8B4513]">
+            {/* Header */}
+            <div className="text-center space-y-2">
+              <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
+              <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
+              <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરી નવરાત્રી યુવક મંડળ</h1>
+              <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બનવતપુરા, હિમતનગર</p>
             </div>
-            <div>
-              <span>તા.: </span>
-              <span>{formatDate(receipt.receipt_date)}</span>
-            </div>
-          </div>
 
-          {/* Payer Name */}
-          <div className="border-b border-[#8B4513] pb-1 flex gap-2 items-baseline">
-            <span className="text-sm font-bold whitespace-nowrap">શ્રીમાન:</span>
-            <span className="text-lg font-black flex-1 border-b-0">{receipt.payer_name}</span>
-          </div>
+            <div className="h-px bg-[#8B4513]/30 w-full" />
 
-          {/* Amount and Village */}
-          <div className="flex justify-between items-end gap-4">
-            <div className="space-y-1">
-              <span className="text-xs font-bold">રૂપિયા:</span>
-              <div className="bg-[#FEF3C7] border-2 border-[#8B4513] rounded-xl px-4 py-2 flex items-center gap-2 shadow-sm">
-                <span className="text-sm font-bold">₹</span>
-                <span className="text-2xl font-black">{receipt.amount.toLocaleString()}</span>
+            {/* Metadata */}
+            <div className="flex justify-between items-center text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <span>નંબર:</span>
+                <span className="bg-white px-2 py-1 rounded border border-[#8B4513] text-sm">
+                  #{receipt.receipt_number.toString().padStart(3, '0')}
+                </span>
+              </div>
+              <div>
+                <span>તા.: </span>
+                <span>{formatDate(receipt.receipt_date)}</span>
               </div>
             </div>
-            <div className="flex-1 text-right space-y-1">
-              <span className="text-xs font-bold">સોસાયટી:</span>
-              <div className="border-b border-[#8B4513] font-bold text-sm min-w-[80px] inline-block pb-1">
-                {receipt.village || "જનકપુરી"}
+
+            {/* Payer Name */}
+            <div className="border-b border-[#8B4513] pb-1 flex gap-2 items-baseline">
+              <span className="text-sm font-bold whitespace-nowrap">શ્રીમાન:</span>
+              <span className="text-lg font-black flex-1 border-b-0">{receipt.payer_name}</span>
+            </div>
+
+            {/* Amount and Village */}
+            <div className="flex justify-between items-end gap-4">
+              <div className="space-y-1">
+                <span className="text-xs font-bold">રૂપિયા:</span>
+                <div className="bg-[#FEF3C7] border-2 border-[#8B4513] rounded-xl px-4 py-2 flex items-center gap-2 shadow-sm">
+                  <span className="text-sm font-bold">₹</span>
+                  <span className="text-2xl font-black">{receipt.amount.toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="flex-1 text-right space-y-1">
+                <span className="text-xs font-bold">સોસાયટી:</span>
+                <div className="border-b border-[#8B4513] font-bold text-sm min-w-[80px] inline-block pb-1">
+                  {receipt.village || "જનકપુરી"}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Content Text */}
-          <p className="text-xs leading-relaxed text-justify">
-            આપના તરફથી જનકપુરી નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
-            <span className="font-bold underline decoration-[#8B4513]/40">
-              {receipt.amount.toLocaleString()}
-            </span>{' '}
-            અંકે રૂપિયા{' '}
-            <span className="font-bold underline decoration-[#8B4513]/40">
-              {gujaratiWords}
-            </span>{' '}
-            મળ્યા છે. જે સાદર સ્વીકારેલ છે.
-          </p>
+            {/* Content Text */}
+            <p className="text-xs leading-relaxed text-justify">
+              આપના તરફથી જનકપુરી નવરાત્રી યુવક મંડળ ને ભેટ સ્વરૂપે રૂપિયા{' '}
+              <span className="font-bold underline decoration-[#8B4513]/40">
+                {receipt.amount.toLocaleString()}
+              </span>{' '}
+              અંકે રૂપિયા{' '}
+              <span className="font-bold underline decoration-[#8B4513]/40">
+                {gujaratiWords}
+              </span>{' '}
+              મળ્યા છે. જે સાદર સ્વીકારેલ છે.
+            </p>
 
-          {/* Footer */}
-          <div className="flex justify-between items-center pt-4">
-            <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
-              જનકપુરી<br/>હિમતનગર
-            </div>
-            <div className="text-center space-y-1">
-              <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
-              <p className="text-[10px] font-bold">પ્રમુખ / મંત્રી</p>
+            {/* Footer */}
+            <div className="flex justify-between items-center pt-4">
+              <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
+                જનકપુરી<br/>હિમતનગર
+              </div>
+              <div className="text-center space-y-1">
+                <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
+                <p className="text-[10px] font-bold">પ્રમુખ / મંત્રી</p>
+              </div>
             </div>
           </div>
         </div>

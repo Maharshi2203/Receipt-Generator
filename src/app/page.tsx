@@ -105,9 +105,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col pb-20 sm:pb-24" style={{ backgroundColor: '#FBE580' }}>
+    <div className="h-[100dvh] flex flex-col overflow-hidden relative" style={{ backgroundColor: '#FBE580' }}>
       {/* App Header */}
-      <header className="sticky top-0 z-50 bg-white/40 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-black/5">
+      <header className="absolute top-0 left-0 right-0 z-50 bg-white/40 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-black/5">
         <div className="flex items-center gap-2 sm:gap-3">
           {activeReceipt ? (
             <Button 
@@ -134,7 +134,10 @@ export default function Home() {
         )}
       </header>
 
-      <main className="flex-1 p-3 sm:p-6 max-w-lg mx-auto w-full">
+      <main className={cn(
+        "flex-1 overflow-y-auto p-3 sm:p-6 pt-20 max-w-lg mx-auto w-full",
+        activeReceipt ? "pb-10" : "pb-28 sm:pb-36"
+      )}>
         {activeReceipt ? (
           <div className="animate-in slide-in-from-right-8 duration-500">
             <ReceiptView 
@@ -189,7 +192,7 @@ export default function Home() {
 
       {/* Bottom Navigation Bar */}
       {!activeReceipt && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 sm:px-6 pb-4 sm:pb-8 pt-3 sm:pt-4 bg-white/40 backdrop-blur-2xl border-t border-black/5">
+        <nav className="absolute bottom-0 left-0 right-0 z-50 px-4 sm:px-6 pb-4 sm:pb-8 pt-3 sm:pt-4 bg-white/40 backdrop-blur-2xl border-t border-black/5">
           <div className="max-w-md mx-auto flex justify-around items-center">
             <button 
               onClick={() => setActiveTab('create')}

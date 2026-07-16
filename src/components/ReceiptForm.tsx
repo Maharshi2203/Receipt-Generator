@@ -69,7 +69,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
 
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] p-6 shadow-2xl shadow-black/5 border border-white/50">
+      <div className="bg-white/90 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-6 shadow-2xl shadow-black/5 border border-white/50">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
@@ -95,7 +95,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="amount" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Amount (₹)</Label>
                 <Input
