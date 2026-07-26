@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  distDir: 'build',
   outputFileTracingRoot: path.resolve(__dirname, '../../'),
   typescript: {
     ignoreBuildErrors: true,
