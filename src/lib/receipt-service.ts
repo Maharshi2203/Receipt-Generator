@@ -1,7 +1,9 @@
+import { supabase } from "./supabase"
+
 /**
- * Receipt Service — Local Storage Mode
- * Works fully offline without any Supabase/database connection.
- * All receipts are stored in browser localStorage.
+ * Receipt Service — Supabase Mode
+ * All receipts are stored in Supabase Postgres.
+ * PDFs are uploaded to Supabase Storage for WhatsApp sharing.
  */
 
 export interface ReceiptData {
@@ -14,54 +16,49 @@ export interface ReceiptData {
   user_id: string
 }
 
-export interface Receipt extends ReceiptData {
-  id: string
-  receipt_number: number
-  created_at: string
+/** Extract a human-readable message from any error type (including Supabase PostgrestError) */
+function extractMessage(error: any): string {
+  if (!error) return "Unknown error"
+  if (typeof error === "string") return error
+  // Supabase PostgrestError has code, message, details, hint
+  if (error.message) return error.message
+  if (error.details) return error.details
+  if (error.hint) return error.hint
+  if (error.code) return `Supabase error code: ${error.code}`
+  try { return JSON.stringify(error) } catch { return "Unknown error" }
 }
 
-const STORAGE_KEY = "receipt_gen_receipts"
-
-/** Load all receipts from localStorage */
-function loadReceipts(): Receipt[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-
-/** Persist receipts to localStorage */
-function saveReceipts(receipts: Receipt[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts))
+/** Log a Supabase error with full details */
+function logSupabaseError(label: string, error: any) {
+  console.error(`❌ ${label}:`, {
+    code: error?.code,
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+  })
 }
 
 /**
- * Saves a new receipt to localStorage
+ * Saves a new receipt to Supabase Database
  */
 export async function saveReceipt(data: ReceiptData) {
   try {
-    const receipts = loadReceipts()
+    const { data: dbResult, error } = await supabase
+      .from("receipts")
+      .insert([data])
+      .select()
+      .single()
 
-    // Auto-increment receipt number
-    const maxNumber = receipts.reduce((max, r) => Math.max(max, r.receipt_number || 0), 0)
-
-    const newReceipt: Receipt = {
-      ...data,
-      id: crypto.randomUUID(),
-      receipt_number: maxNumber + 1,
-      created_at: new Date().toISOString(),
+    if (error) {
+      logSupabaseError("saveReceipt Supabase error", error)
+      throw new Error(extractMessage(error))
     }
 
-    receipts.unshift(newReceipt) // Newest first
-    saveReceipts(receipts)
-
-    console.log("✅ Receipt saved locally:", newReceipt.receipt_number)
-    return { success: true, data: newReceipt }
+    return { success: true, data: dbResult }
   } catch (error: any) {
-    console.error("❌ saveReceipt failed:", error)
-    return { success: false, error: error.message || "Failed to save receipt" }
+    const msg = extractMessage(error)
+    console.error("❌ saveReceipt failed:", msg)
+    return { success: false, error: msg }
   }
 }
 
@@ -70,40 +67,80 @@ export async function saveReceipt(data: ReceiptData) {
  */
 export async function getLatestReceipt(userId: string) {
   try {
-    const receipts = loadReceipts()
-    const userReceipts = receipts.filter((r) => r.user_id === userId)
-    const latest = userReceipts[0] ?? null
-    return { success: true, data: latest }
+    const { data, error } = await supabase
+      .from("receipts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (error) {
+      if (error.code === "PGRST116") return { success: true, data: null } // No rows found
+      logSupabaseError("getLatestReceipt Supabase error", error)
+      throw new Error(extractMessage(error))
+    }
+    return { success: true, data }
   } catch (error: any) {
-    console.error("❌ getLatestReceipt failed:", error)
-    return { success: false, error: error.message }
+    const msg = extractMessage(error)
+    console.error("❌ getLatestReceipt failed:", msg)
+    return { success: false, error: msg }
   }
 }
 
 /**
- * Fetches all receipts for a specific user
+ * Fetches all receipts for a specific user (newest first)
  */
 export async function getAllReceipts(userId: string) {
   try {
-    const receipts = loadReceipts()
-    const userReceipts = receipts.filter((r) => r.user_id === userId)
-    return { success: true, data: userReceipts }
+    const { data, error } = await supabase
+      .from("receipts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      logSupabaseError("getAllReceipts Supabase error", error)
+      throw new Error(extractMessage(error))
+    }
+
+    return { success: true, data: data ?? [] }
   } catch (error: any) {
-    console.error("❌ getAllReceipts failed:", error)
-    return { success: false, error: error.message }
+    const msg = extractMessage(error)
+    console.error("❌ getAllReceipts failed:", msg)
+    return { success: false, error: msg }
   }
 }
 
 /**
- * Stub: PDF upload — returns a fake local URL (Supabase storage not available)
+ * Uploads a PDF blob to Supabase Storage and returns a public URL.
+ * This public URL can be shared via WhatsApp.
  */
 export async function uploadReceiptPDF(blob: Blob, receiptNumber: number) {
   try {
-    // Create a local object URL so PDF preview still works
-    const url = URL.createObjectURL(blob)
-    return { success: true, url }
+    const fileName = `public/receipt-${receiptNumber}-${Date.now()}.pdf`
+
+    const { data, error } = await supabase.storage
+      .from("receipts")
+      .upload(fileName, blob, {
+        contentType: "application/pdf",
+        cacheControl: "3600",
+        upsert: true,
+      })
+
+    if (error) {
+      logSupabaseError("uploadReceiptPDF Supabase error", error)
+      throw new Error(extractMessage(error))
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("receipts")
+      .getPublicUrl(fileName)
+
+    return { success: true, url: publicUrl }
   } catch (error: any) {
-    console.error("❌ uploadReceiptPDF failed:", error)
-    return { success: false, error: error.message }
+    const msg = extractMessage(error)
+    console.error("❌ uploadReceiptPDF failed:", msg)
+    return { success: false, error: msg }
   }
 }

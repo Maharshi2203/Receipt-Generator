@@ -8,6 +8,7 @@ import { toPng } from "html-to-image"
 import { jsPDF } from "jspdf"
 
 
+
 interface Receipt {
   id?: string
   receipt_number: number
@@ -27,14 +28,17 @@ interface ReceiptViewProps {
 export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const receiptRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const [pdfReady, setPdfReady] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [scale, setScale] = useState(1)
   const [receiptHeight, setReceiptHeight] = useState<number | null>(null)
+  // Pre-generated PDF blob stored here — avoids async before navigator.share()
+  const pdfBlobRef = useRef<Blob | null>(null)
 
+  // Resize observer for scaling
   useEffect(() => {
     if (!wrapperRef.current || !receiptRef.current) return
-
     const handleResize = () => {
       if (wrapperRef.current && receiptRef.current) {
         const wrapperWidth = wrapperRef.current.getBoundingClientRect().width
@@ -49,17 +53,26 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
         }
       }
     }
-
-    const observer = new ResizeObserver(() => {
-      handleResize()
-    })
-
+    const observer = new ResizeObserver(handleResize)
     observer.observe(wrapperRef.current)
     handleResize()
+    return () => observer.disconnect()
+  }, [receipt])
 
-    return () => {
-      observer.disconnect()
-    }
+  // Pre-generate PDF in background once receipt is rendered
+  // Stored in ref so navigator.share() can be called synchronously on click
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const blob = await generatePDFBlob()
+        pdfBlobRef.current = blob
+        setPdfReady(true)
+      } catch (e) {
+        console.warn("PDF pre-generation failed:", e)
+      }
+    }, 800) // slight delay to let receipt fully render first
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt])
 
   const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
@@ -116,12 +129,11 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const handleDownloadPDF = async () => {
     setDownloading(true)
     try {
-      const blob = await generatePDFBlob()
+      const blob = pdfBlobRef.current ?? await generatePDFBlob()
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
       link.download = `receipt-${receipt.receipt_number}.pdf`
-      // Must append to DOM for Firefox and Safari compatibility
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -134,56 +146,49 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     }
   }
 
-  const handleWhatsAppShare = async () => {
-    setSharing(true)
-    try {
-      const blob = await generatePDFBlob()
-      const pdfFile = new File([blob], `receipt-${receipt.receipt_number}.pdf`, { type: "application/pdf" })
-
-      // Try Web Share API first (works great on mobile — shares actual PDF file)
-      if (typeof navigator !== "undefined" && navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
-        await navigator.share({
-          title: `Receipt #${String(receipt.receipt_number).padStart(3, "0")}`,
-          text: `Receipt for ${receipt.payer_name} — ₹${receipt.amount.toLocaleString()}`,
-          files: [pdfFile],
-        })
-        return
-      }
-
-      // Fallback: download PDF + open WhatsApp web with receipt details as text
-      // (blob:// URLs are private and cannot be shared over WhatsApp)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `receipt-${receipt.receipt_number}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-
-      // Open WhatsApp with receipt info text
-      const phone = (process.env.NEXT_PUBLIC_ALLOWED_PHONE || "").replace(/\+/g, "")
-      const text = encodeURIComponent(
-        `🧾 *Receipt #${String(receipt.receipt_number).padStart(3, "0")}*\n` +
-        `👤 ${receipt.payer_name}\n` +
-        `💰 ₹${receipt.amount.toLocaleString()} (${receipt.payment_mode})\n` +
-        `📅 ${receipt.receipt_date}\n` +
-        `📍 ${receipt.village || "જનકપુરી"}\n\n` +
-        `_Janakpuri Navratri Yuvak Mandal_`
-      )
-      const waUrl = phone
-        ? `https://wa.me/${phone}?text=${text}`
-        : `https://wa.me/?text=${text}`
-
-      setTimeout(() => window.open(waUrl, "_blank"), 500)
-    } catch (error: any) {
-      if (error?.name === "AbortError") return // User cancelled share sheet — not an error
-      console.error("WhatsApp sharing failed:", error)
-      alert(`❌ Could not share: ${error.message || "Unknown error"}`)
-    } finally {
-      setSharing(false)
+  // SYNCHRONOUS click handler — PDF is pre-built, so navigator.share() fires
+  // within the user gesture without any async gap (no NotAllowedError)
+  const handleWhatsAppShare = () => {
+    const blob = pdfBlobRef.current
+    if (!blob) {
+      alert("PDF is still generating, please wait a moment and try again.")
+      return
     }
+
+    const pdfFile = new File(
+      [blob],
+      `receipt-${receipt.receipt_number}.pdf`,
+      { type: "application/pdf" }
+    )
+
+    // Mobile / desktop: open native OS share sheet with actual PDF file
+    if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+      navigator.share({
+        title: `Receipt #${String(receipt.receipt_number).padStart(3, "0")}`,
+        text: `Receipt for ${receipt.payer_name} — ₹${receipt.amount.toLocaleString()}`,
+        files: [pdfFile],
+      }).catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Share failed:", err)
+          alert("Sharing failed. Try the PDF Download button instead.")
+        }
+      })
+      return
+    }
+
+    // Fallback for browsers where file sharing isn't supported:
+    // Download the PDF — user can then manually send via WhatsApp
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `receipt-${receipt.receipt_number}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    alert("PDF saved! Open WhatsApp → choose contact → tap 📎 → select the PDF.")
   }
+
 
   return (
     <div className="max-w-[400px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
@@ -191,11 +196,13 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       <div className="grid grid-cols-2 gap-4 px-2 print:hidden">
         <Button
           onClick={handleWhatsAppShare}
-          disabled={sharing}
-          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
+          disabled={!pdfReady}
+          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] disabled:opacity-40 text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
         >
-          {sharing ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageSquare className="h-5 w-5" />}
-          WHATSAPP
+          {!pdfReady
+            ? <><Loader2 className="h-5 w-5 animate-spin" /> Preparing...</>
+            : <><MessageSquare className="h-5 w-5" /> WHATSAPP</>
+          }
         </Button>
 
         <Button
