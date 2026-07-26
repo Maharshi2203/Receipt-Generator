@@ -225,9 +225,8 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
             margin: "0 auto"
           }}
         >
-          {/* Decorative corner */}
-          <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-[#8B4513]/20 rounded-tr-xl pointer-events-none" />
-          
+
+
           <div className="space-y-6 text-[#8B4513]">
             {/* Header */}
             <div className="text-center space-y-2">
@@ -290,7 +289,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
             </p>
 
             {/* Footer */}
-            <div className="flex justify-between items-center pt-4">
+            <div className="flex justify-between items-center -mt-2">
               <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
                 જનકપુરી<br/>હિમતનગર
               </div>
