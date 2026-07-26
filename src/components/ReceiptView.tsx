@@ -33,8 +33,53 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const [downloading, setDownloading] = useState(false)
   const [scale, setScale] = useState(1)
   const [receiptHeight, setReceiptHeight] = useState<number | null>(null)
+  const [signatureUrl, setSignatureUrl] = useState("/signature.png")
   // Pre-generated PDF blob stored here — avoids async before navigator.share()
   const pdfBlobRef = useRef<Blob | null>(null)
+
+  // Process the signature scan on mount to be a clean transparent black PNG
+  useEffect(() => {
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = "/signature.png"
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      
+      ctx.drawImage(img, 0, 0)
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imgData.data
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i+1]
+        const b = data[i+2]
+        
+        // Calculate grayscale luminance
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        
+        // If it's a light background pixel (near white/bluish), make it transparent
+        if (luminance > 180) {
+          data[i+3] = 0 // Transparent alpha
+        } else {
+          // Make the ink dark black and preserve smooth edges
+          data[i] = 0
+          data[i+1] = 0
+          data[i+2] = 0
+          
+          // Smooth out edge pixels based on luminance (darker = more opaque)
+          const factor = (180 - luminance) / 180
+          data[i+3] = Math.min(255, Math.round(factor * 2.5 * 255))
+        }
+      }
+      
+      ctx.putImageData(imgData, 0, 0)
+      setSignatureUrl(canvas.toDataURL("image/png"))
+    }
+  }, [])
 
   // Resize observer for scaling
   useEffect(() => {
@@ -59,9 +104,12 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     return () => observer.disconnect()
   }, [receipt])
 
-  // Pre-generate PDF in background once receipt is rendered
+  // Pre-generate PDF in background once receipt is rendered and signature is processed
   // Stored in ref so navigator.share() can be called synchronously on click
   useEffect(() => {
+    // Only pre-generate when the signatureUrl is fully processed into base64
+    if (signatureUrl === "/signature.png") return
+
     const timer = setTimeout(async () => {
       try {
         const blob = await generatePDFBlob()
@@ -70,10 +118,10 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       } catch (e) {
         console.warn("PDF pre-generation failed:", e)
       }
-    }, 800) // slight delay to let receipt fully render first
+    }, 1000) // slight delay to let receipt and signature fully render
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt])
+  }, [receipt, signatureUrl])
 
   const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
 
@@ -224,7 +272,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
         <div 
           ref={receiptRef}
           id="receipt-print-area"
-          className="bg-[#FDF8E8] border-[6px] border-double border-[#8B4513] rounded-2xl p-6 shadow-2xl relative overflow-hidden flex-shrink-0"
+          className="bg-[#FDF8E8] border-[6px] border-double border-[#8B4513] rounded-2xl pt-6 px-6 pb-8 shadow-2xl relative overflow-hidden flex-shrink-0"
           style={{ 
             width: "380px", 
             transform: `scale(${scale})`, 
@@ -240,7 +288,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
               <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
               <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
               <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરી નવરાત્રી યુવક મંડળ</h1>
-              <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બનવતપુરા, હિમતનગર</p>
+              <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બલવંતપુરા, હિંમતનગર</p>
             </div>
 
             <div className="h-px bg-[#8B4513]/30 w-full" />
@@ -296,11 +344,20 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
             </p>
 
             {/* Footer */}
-            <div className="flex justify-between items-center -mt-2">
+            <div className="flex justify-between items-center -mt-5">
               <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
-                જનકપુરી<br/>હિમતનગર
+                જનકપુરી<br/>હિંમતનગર
               </div>
-              <div className="text-center space-y-1">
+              <div className="text-center space-y-1 flex flex-col items-center">
+                {/* Signature Image */}
+                <div className="h-10 w-24 flex items-center justify-center -mb-2 pointer-events-none">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src={signatureUrl} 
+                    alt="Signature" 
+                    className="h-12 object-contain"
+                  />
+                </div>
                 <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
                 <p className="text-[10px] font-bold">પ્રમુખ / મંત્રી</p>
               </div>
