@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import VisualEditsMessenger from "../visual-edits/VisualEditsMessenger";
 import ErrorReporter from "@/components/ErrorReporter";
@@ -7,6 +7,19 @@ import Script from "next/script";
 export const metadata: Metadata = {
   title: "ReceiptGen - Janakpuri Navratri Yuvak Mandal",
   description: "Receipt Generator for Janakpuri Navratri Yuvak Mandal",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ReceiptGen",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#FBE580",
 };
 
 export default function RootLayout({

@@ -71,13 +71,12 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
     <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="bg-white/90 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-6 shadow-2xl shadow-black/5 border border-white/50">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="payer" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">શ્રીમાન (Name)</Label>
               <Input
                 id="payer"
                 placeholder="Full Name"
-                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
+                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-base text-zinc-900 placeholder:text-zinc-300"
                 value={payerName}
                 onChange={(e) => setPayerName(e.target.value)}
                 required
@@ -89,7 +88,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
               <Input
                 id="village"
                 placeholder="જનકપુરી"
-                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900 placeholder:text-zinc-300"
+                className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-base text-zinc-900 placeholder:text-zinc-300"
                 value={village}
                 onChange={(e) => setVillage(e.target.value)}
               />
@@ -102,7 +101,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
                   id="amount"
                   type="number"
                   placeholder="0.00"
-                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all text-lg font-black text-zinc-900 placeholder:text-zinc-300"
+                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all text-base sm:text-lg font-black text-zinc-900 placeholder:text-zinc-300"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   required
@@ -113,7 +112,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
                 <Input
                   id="date"
                   type="date"
-                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-zinc-900"
+                  className="h-14 bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-bold text-base text-zinc-900"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
@@ -124,13 +123,13 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
             <div className="space-y-2">
               <Label htmlFor="mode" className="text-[10px] uppercase font-black tracking-[0.2em] text-zinc-400 ml-1">Payment Mode</Label>
               <Select value={paymentMode} onValueChange={setPaymentMode}>
-                <SelectTrigger className="h-14 bg-zinc-50 border-none rounded-2xl focus:ring-1 focus:ring-zinc-200 transition-all font-bold text-zinc-900">
+                <SelectTrigger className="h-14 bg-zinc-50 border-none rounded-2xl focus:ring-1 focus:ring-zinc-200 transition-all font-bold text-base text-zinc-900">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-zinc-100 rounded-2xl shadow-2xl">
-                  <SelectItem value="Cash" className="font-bold">Cash</SelectItem>
-                  <SelectItem value="GPay" className="font-bold">GPay</SelectItem>
-                  <SelectItem value="PhonePe" className="font-bold">PhonePe</SelectItem>
+                  <SelectItem value="Cash" className="font-bold text-base">Cash</SelectItem>
+                  <SelectItem value="GPay" className="font-bold text-base">GPay</SelectItem>
+                  <SelectItem value="PhonePe" className="font-bold text-base">PhonePe</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -153,7 +152,7 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
               <Textarea
                 id="description"
                 placeholder="Purpose of payment..."
-                className="bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-medium min-h-[100px] text-zinc-900 placeholder:text-zinc-300"
+                className="bg-zinc-50 border-none rounded-2xl focus-visible:ring-1 focus-visible:ring-zinc-200 transition-all font-medium min-h-[100px] text-base text-zinc-900 placeholder:text-zinc-300"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
