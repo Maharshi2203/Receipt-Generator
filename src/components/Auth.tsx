@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Phone, ArrowRight, Loader2, AlertCircle, Receipt as ReceiptIcon } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function Auth({ onLoginSuccess }: { onLoginSuccess: () => void }) {

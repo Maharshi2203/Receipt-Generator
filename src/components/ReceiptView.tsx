@@ -4,10 +4,9 @@ import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
 import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
-import html2canvas from "html2canvas"
+import { toPng } from "html-to-image"
 import { jsPDF } from "jspdf"
-import { supabase } from "@/lib/supabase"
-import { uploadReceiptPDF } from "@/lib/receipt-service"
+
 
 interface Receipt {
   id?: string
@@ -75,41 +74,42 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
 
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
-    
-    // Temporarily reset CSS transform to ensure html2canvas captures full 380px size at high resolution
-    const prevTransform = receiptRef.current.style.transform
-    const prevTransformOrigin = receiptRef.current.style.transformOrigin
-    
-    receiptRef.current.style.transform = "none"
-    receiptRef.current.style.transformOrigin = "initial"
-    
+
+    // Temporarily remove CSS transform so html-to-image captures full 380px at native size
+    const el = receiptRef.current
+    const prevTransform = el.style.transform
+    const prevTransformOrigin = el.style.transformOrigin
+    el.style.transform = "none"
+    el.style.transformOrigin = "initial"
+
     try {
-      const canvas = await html2canvas(receiptRef.current, { 
-        scale: 3, // High resolution
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#FDF8E8"
+      // html-to-image fully supports modern CSS (oklab, oklch, etc.) — unlike html2canvas
+      const dataUrl = await toPng(el, {
+        pixelRatio: 3,
+        backgroundColor: "#FDF8E8",
+        style: { transform: "none", transformOrigin: "initial" },
       })
 
-      const imgData = canvas.toDataURL("image/png")
-      const pdf = new jsPDF("p", "mm", "a4")
-      
-      // Calculate dimensions to fit centered on A4
-      const pageWidth = 210
-      const pageHeight = 297
-      const imgWidth = 140 // Slightly narrow for clean look
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
-      const x = (pageWidth - imgWidth) / 2
-      const y = 20 // Margin from top
+      // Load the PNG to get its natural dimensions
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = reject
+        image.src = dataUrl
+      })
 
-      pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
+      const pdf = new jsPDF("p", "mm", "a4")
+      const pageWidth = 210
+      const imgWidth = 150 // Centered on A4
+      const imgHeight = (img.naturalHeight * imgWidth) / img.naturalWidth
+      const x = (pageWidth - imgWidth) / 2
+      const y = 20
+
+      pdf.addImage(dataUrl, "PNG", x, y, imgWidth, imgHeight)
       return pdf.output("blob")
     } finally {
-      if (receiptRef.current) {
-        receiptRef.current.style.transform = prevTransform
-        receiptRef.current.style.transformOrigin = prevTransformOrigin
-      }
+      el.style.transform = prevTransform
+      el.style.transformOrigin = prevTransformOrigin
     }
   }
 
@@ -121,11 +121,14 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       const link = document.createElement("a")
       link.href = url
       link.download = `receipt-${receipt.receipt_number}.pdf`
+      // Must append to DOM for Firefox and Safari compatibility
+      document.body.appendChild(link)
       link.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (error) {
       console.error("PDF generation failed:", error)
-      alert("Failed to generate PDF")
+      alert("Failed to generate PDF. Please try again.")
     } finally {
       setDownloading(false)
     }
@@ -134,25 +137,49 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const handleWhatsAppShare = async () => {
     setSharing(true)
     try {
-      // 1. Generate PDF
-      const pdfBlob = await generatePDFBlob()
-      
-      // 2. Upload using Service
-      const response = await uploadReceiptPDF(pdfBlob, receipt.receipt_number)
-      
-      if (!response.success) throw new Error(response.error)
-      
-      const publicUrl = response.url
-      
-      // 3. Open WhatsApp link
-      const phone = process.env.NEXT_PUBLIC_ALLOWED_PHONE || ""
-      const message = encodeURIComponent(`Download your receipt from Orchids: ${publicUrl}`)
-      const whatsappUrl = `https://wa.me/${phone.replace(/\+/g, "")}?text=${message}`
-      
-      window.open(whatsappUrl, "_blank")
+      const blob = await generatePDFBlob()
+      const pdfFile = new File([blob], `receipt-${receipt.receipt_number}.pdf`, { type: "application/pdf" })
+
+      // Try Web Share API first (works great on mobile — shares actual PDF file)
+      if (typeof navigator !== "undefined" && navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+        await navigator.share({
+          title: `Receipt #${String(receipt.receipt_number).padStart(3, "0")}`,
+          text: `Receipt for ${receipt.payer_name} — ₹${receipt.amount.toLocaleString()}`,
+          files: [pdfFile],
+        })
+        return
+      }
+
+      // Fallback: download PDF + open WhatsApp web with receipt details as text
+      // (blob:// URLs are private and cannot be shared over WhatsApp)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `receipt-${receipt.receipt_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+
+      // Open WhatsApp with receipt info text
+      const phone = (process.env.NEXT_PUBLIC_ALLOWED_PHONE || "").replace(/\+/g, "")
+      const text = encodeURIComponent(
+        `🧾 *Receipt #${String(receipt.receipt_number).padStart(3, "0")}*\n` +
+        `👤 ${receipt.payer_name}\n` +
+        `💰 ₹${receipt.amount.toLocaleString()} (${receipt.payment_mode})\n` +
+        `📅 ${receipt.receipt_date}\n` +
+        `📍 ${receipt.village || "જનકપુરી"}\n\n` +
+        `_Janakpuri Navratri Yuvak Mandal_`
+      )
+      const waUrl = phone
+        ? `https://wa.me/${phone}?text=${text}`
+        : `https://wa.me/?text=${text}`
+
+      setTimeout(() => window.open(waUrl, "_blank"), 500)
     } catch (error: any) {
+      if (error?.name === "AbortError") return // User cancelled share sheet — not an error
       console.error("WhatsApp sharing failed:", error)
-      alert(`❌ WhatsApp share error: ${error.message || "Unknown error"}\n\nMake sure Supabase Storage 'receipts' bucket is public.`)
+      alert(`❌ Could not share: ${error.message || "Unknown error"}`)
     } finally {
       setSharing(false)
     }

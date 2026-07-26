@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
+import { getAllReceipts } from "@/lib/receipt-service"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, History, ArrowRight } from "lucide-react"
@@ -17,14 +17,9 @@ export function ReceiptList({ userId, onSelect }: ReceiptListProps) {
 
   useEffect(() => {
     async function fetchReceipts() {
-      const { data, error } = await supabase
-        .from("receipts")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-
-      if (!error && data) {
-        setReceipts(data)
+      const result = await getAllReceipts(userId)
+      if (result.success && result.data) {
+        setReceipts(result.data)
       }
       setLoading(false)
     }
