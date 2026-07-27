@@ -81,28 +81,48 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     }
   }, [])
 
+  const lastWidthRef = useRef<number>(0)
+  const lastHeightRef = useRef<number>(0)
+
   // Resize observer for scaling
   useEffect(() => {
     if (!wrapperRef.current || !receiptRef.current) return
     const handleResize = () => {
-      if (wrapperRef.current && receiptRef.current) {
-        const wrapperWidth = wrapperRef.current.getBoundingClientRect().width
-        const targetWidth = 380
-        if (wrapperWidth < targetWidth) {
-          const newScale = wrapperWidth / targetWidth
-          setScale(newScale)
-          setReceiptHeight(receiptRef.current.scrollHeight * newScale)
-        } else {
-          setScale(1)
-          setReceiptHeight(null)
-        }
+      const wrapper = wrapperRef.current
+      const receipt = receiptRef.current
+      if (!wrapper || !receipt) return
+
+      const wrapperWidth = wrapper.getBoundingClientRect().width
+      // Use offsetHeight to get the accurate unscaled layout height including borders and padding
+      const receiptHeightUnscaled = receipt.offsetHeight
+
+      // If neither the wrapper width nor the receipt height has changed, skip state update to prevent layout loops
+      if (
+        wrapperWidth === lastWidthRef.current &&
+        receiptHeightUnscaled === lastHeightRef.current
+      ) {
+        return
+      }
+
+      lastWidthRef.current = wrapperWidth
+      lastHeightRef.current = receiptHeightUnscaled
+
+      const targetWidth = 380
+      if (wrapperWidth < targetWidth) {
+        const newScale = wrapperWidth / targetWidth
+        setScale(newScale)
+        setReceiptHeight(receiptHeightUnscaled * newScale)
+      } else {
+        setScale(1)
+        setReceiptHeight(null)
       }
     }
     const observer = new ResizeObserver(handleResize)
     observer.observe(wrapperRef.current)
+    observer.observe(receiptRef.current)
     handleResize()
     return () => observer.disconnect()
-  }, [receipt])
+  }, [receipt, signatureUrl])
 
   // Pre-generate PDF in background once receipt is rendered and signature is processed
   // Stored in ref so navigator.share() can be called synchronously on click

@@ -158,7 +158,6 @@ export function ReceiptForm({ userId, onSuccess }: ReceiptFormProps) {
                 rows={3}
               />
             </div>
-          </div>
 
           <Button type="submit" className="w-full h-16 rounded-2xl bg-zinc-950 hover:bg-zinc-900 text-[#FBE580] font-black text-lg shadow-xl shadow-zinc-200 mt-4 transition-all active:scale-[0.98]" disabled={loading}>
             {loading ? (
