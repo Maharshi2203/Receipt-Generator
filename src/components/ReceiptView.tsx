@@ -29,7 +29,6 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const receiptRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [pdfReady, setPdfReady] = useState(false)
-  const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [scale, setScale] = useState(1)
   const [receiptHeight, setReceiptHeight] = useState<number | null>(null)
@@ -93,8 +92,8 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       if (!wrapper || !receipt) return
 
       const wrapperWidth = wrapper.getBoundingClientRect().width
-      // Use offsetHeight to get the accurate unscaled layout height including borders and padding
-      const receiptHeightUnscaled = receipt.offsetHeight
+      // Use scrollHeight to capture the full unscaled height of the receipt
+      const receiptHeightUnscaled = receipt.scrollHeight
 
       // If neither the wrapper width nor the receipt height has changed, skip state update to prevent layout loops
       if (
@@ -111,6 +110,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       if (wrapperWidth < targetWidth) {
         const newScale = wrapperWidth / targetWidth
         setScale(newScale)
+        // Use the full scrollHeight for proper wrapper height after scaling
         setReceiptHeight(receiptHeightUnscaled * newScale)
       } else {
         setScale(1)
@@ -153,25 +153,42 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     return `${day}/${month}/${year}`
   }
 
-  const generatePDFBlob = async (): Promise<Blob> => {
+  /**
+   * SHARED CAPTURE HELPER
+   * ─────────────────────
+   * Captures the on-screen receipt DOM node as a PNG via html-to-image and
+   * embeds it into an A4 jsPDF document. Returns the jsPDF instance so both
+   * the download path and the WhatsApp-share (blob) path can reuse it.
+   *
+   * pixelRatio 2 gives sharp output (~1 MB) without the 5.4 MB bloat that
+   * pixelRatio 3 was producing.
+   */
+  const captureReceiptAsPDF = async (): Promise<jsPDF> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
 
-    // Temporarily remove CSS transform so html-to-image captures full 380px at native size
     const el = receiptRef.current
+
+    // Strip the CSS scale transform so html-to-image renders the full 380 px
+    // receipt at its native size rather than the shrunk-to-fit mobile version.
     const prevTransform = el.style.transform
     const prevTransformOrigin = el.style.transformOrigin
     el.style.transform = "none"
     el.style.transformOrigin = "initial"
 
     try {
-      // html-to-image fully supports modern CSS (oklab, oklch, etc.) — unlike html2canvas
+      // Wait for all custom web fonts to finish loading so the Gujarati text
+      // (rendered via the system font stack) isn't captured as blank boxes.
+      await document.fonts.ready
+
+      // html-to-image supports modern CSS (oklch, oklab, etc.) unlike html2canvas.
       const dataUrl = await toPng(el, {
-        pixelRatio: 3,
+        pixelRatio: 2,                          // 2× is sharp enough; 3× caused 5.4 MB files
         backgroundColor: "#FDF8E8",
         style: { transform: "none", transformOrigin: "initial" },
       })
 
-      // Load the PNG to get its natural dimensions
+      // Measure the captured image dimensions so we can scale it proportionally
+      // onto an A4 page without distorting the receipt layout.
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image()
         image.onload = () => resolve(image)
@@ -180,32 +197,59 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       })
 
       const pdf = new jsPDF("p", "mm", "a4")
-      const pageWidth = 210
-      const imgWidth = 150 // Centered on A4
+      const pageWidth = 210          // A4 width in mm
+      const imgWidth = 150           // receipt occupies 150 mm, centred
       const imgHeight = (img.naturalHeight * imgWidth) / img.naturalWidth
       const x = (pageWidth - imgWidth) / 2
       const y = 20
 
       pdf.addImage(dataUrl, "PNG", x, y, imgWidth, imgHeight)
-      return pdf.output("blob")
+      return pdf
     } finally {
+      // Always restore the CSS transform even if capture throws.
       el.style.transform = prevTransform
       el.style.transformOrigin = prevTransformOrigin
     }
   }
 
+  /**
+   * BLOB HELPER (used only for the WhatsApp share path which needs a File object)
+   * ──────────────────────────────────────────────────────────────────────────────
+   * NOTE: We explicitly wrap the ArrayBuffer in a new Blob with
+   * type:"application/pdf" because jsPDF's pdf.output("blob") returns a Blob
+   * with type:"" (empty string). A typeless blob causes Chrome on Windows to
+   * fall back to the internal blob UUID as the filename — producing the
+   * "2937d4ba-6926-4932-a9b1-e26748c3ee30" downloads you saw.
+   */
+  const generatePDFBlob = async (): Promise<Blob> => {
+    const pdf = await captureReceiptAsPDF()
+    const bytes = pdf.output("arraybuffer")
+    return new Blob([bytes], { type: "application/pdf" })
+  }
+
+  /**
+   * DOWNLOAD HANDLER
+   * ────────────────
+   * Uses jsPDF's own .save() method — the most cross-browser-reliable way to
+   * trigger a named PDF download. It bypasses the blob-URL → anchor approach
+   * that Chrome on Windows was mis-handling (ignoring the `download` attribute
+   * and falling back to the blob UUID as the filename).
+   *
+   * Filename format: "Janakpuri_Receipt_001.pdf"
+   */
   const handleDownloadPDF = async () => {
     setDownloading(true)
     try {
-      const blob = pdfBlobRef.current ?? await generatePDFBlob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `receipt-${receipt.receipt_number}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      const filename = `receipt-${receipt.receipt_number}.pdf`
+
+      // Always re-capture for the download so we never serve a stale pre-built
+      // blob that was constructed under the old (typeless) code path.
+      const pdf = await captureReceiptAsPDF()
+
+      // jsPDF.save() constructs its own anchor internally with the correct MIME
+      // type and download attribute — no UUID risk, works on Chrome / Edge /
+      // Firefox / Safari / Android / iOS.
+      pdf.save(filename)
     } catch (error) {
       console.error("PDF generation failed:", error)
       alert("Failed to generate PDF. Please try again.")
@@ -286,7 +330,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       {/* Receipt Element Wrapper (Dynamic Scale to Fit Mobile Viewports) */}
       <div 
         ref={wrapperRef} 
-        className="w-full flex justify-center overflow-hidden print:overflow-visible" 
+        className="w-full flex justify-center print:overflow-visible" 
         style={receiptHeight ? { height: `${receiptHeight}px` } : undefined}
       >
         <div 
