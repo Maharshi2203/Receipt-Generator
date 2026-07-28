@@ -124,35 +124,6 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     return () => observer.disconnect()
   }, [receipt, signatureUrl])
 
-  // Pre-generate PDF in background once receipt is rendered and signature is processed
-  // Stored in ref so navigator.share() can be called synchronously on click
-  useEffect(() => {
-    // Only pre-generate when the signatureUrl is fully processed into base64
-    if (signatureUrl === "/signature.png") return
-
-    const timer = setTimeout(async () => {
-      try {
-        const blob = await generatePDFBlob()
-        pdfBlobRef.current = blob
-        setPdfReady(true)
-      } catch (e) {
-        console.warn("PDF pre-generation failed:", e)
-      }
-    }, 1000) // slight delay to let receipt and signature fully render
-    return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt, signatureUrl])
-
-  const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    return `${day}/${month}/${year}`
-  }
-
   /**
    * SHARED CAPTURE HELPER
    * ─────────────────────
@@ -225,6 +196,35 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     const pdf = await captureReceiptAsPDF()
     const bytes = pdf.output("arraybuffer")
     return new Blob([bytes], { type: "application/pdf" })
+  }
+
+  // Pre-generate PDF in background once receipt is rendered and signature is processed
+  // Stored in ref so navigator.share() can be called synchronously on click
+  useEffect(() => {
+    // Only pre-generate when the signatureUrl is fully processed into base64
+    if (signatureUrl === "/signature.png") return
+
+    const timer = setTimeout(async () => {
+      try {
+        const blob = await generatePDFBlob()
+        pdfBlobRef.current = blob
+        setPdfReady(true)
+      } catch (e) {
+        console.warn("PDF pre-generation failed:", e)
+      }
+    }, 1000) // slight delay to let receipt and signature fully render
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt, signatureUrl])
+
+  const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
   }
 
   /**
