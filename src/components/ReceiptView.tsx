@@ -330,7 +330,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       {/* Receipt Element Wrapper (Dynamic Scale to Fit Mobile Viewports) */}
       <div 
         ref={wrapperRef} 
-        className="w-full flex justify-center print:overflow-visible" 
+        className="w-full flex justify-center items-start print:overflow-visible" 
         style={receiptHeight ? { height: `${receiptHeight}px` } : undefined}
       >
         <div 
