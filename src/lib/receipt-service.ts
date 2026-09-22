@@ -93,3 +93,35 @@ export async function uploadReceiptPDF(blob: Blob, receiptNumber: number) {
     return { success: false, error: error.message }
   }
 }
+
+/**
+ * Uploads an Image PNG blob to Supabase Storage
+ * Returns the public URL
+ */
+export async function uploadReceiptImage(blob: Blob, receiptNumber: number) {
+  try {
+    const fileName = `public/receipt-${receiptNumber || Date.now()}-${Math.random().toString(36).substring(7)}.png`
+    
+    // Upload to 'receipts' bucket
+    const { data, error } = await supabase.storage
+      .from("receipts")
+      .upload(fileName, blob, {
+        contentType: 'image/png',
+        cacheControl: '3600',
+        upsert: true
+      })
+
+    if (error) throw error
+
+    // Get Public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from("receipts")
+      .getPublicUrl(fileName)
+
+    return { success: true, url: publicUrl }
+  } catch (error: any) {
+    console.error("❌ uploadReceiptImage failed:", error)
+    return { success: false, error: error.message }
+  }
+}
+

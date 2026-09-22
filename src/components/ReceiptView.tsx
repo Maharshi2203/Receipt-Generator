@@ -7,7 +7,7 @@ import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
 import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
 import { supabase } from "@/lib/supabase"
-import { uploadReceiptPDF } from "@/lib/receipt-service"
+import { uploadReceiptPDF, uploadReceiptImage } from "@/lib/receipt-service"
 
 interface Receipt {
   id?: string
@@ -73,10 +73,43 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     return `${day}/${month}/${year}`
   }
 
+  const generateImageBlob = async (): Promise<{ blob: Blob; dataUrl: string }> => {
+    if (!receiptRef.current) throw new Error("Receipt element not found")
+    
+    const prevTransform = receiptRef.current.style.transform
+    const prevTransformOrigin = receiptRef.current.style.transformOrigin
+    
+    receiptRef.current.style.transform = "none"
+    receiptRef.current.style.transformOrigin = "initial"
+    
+    try {
+      const canvas = await html2canvas(receiptRef.current, { 
+        scale: 3, // High resolution
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#FDF8E8"
+      })
+
+      const dataUrl = canvas.toDataURL("image/png")
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b)
+          else reject(new Error("Failed to capture receipt image"))
+        }, "image/png")
+      })
+
+      return { blob, dataUrl }
+    } finally {
+      if (receiptRef.current) {
+        receiptRef.current.style.transform = prevTransform
+        receiptRef.current.style.transformOrigin = prevTransformOrigin
+      }
+    }
+  }
+
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
     
-    // Temporarily reset CSS transform to ensure html2canvas captures full 380px size at high resolution
     const prevTransform = receiptRef.current.style.transform
     const prevTransformOrigin = receiptRef.current.style.transformOrigin
     
@@ -94,14 +127,13 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       const imgData = canvas.toDataURL("image/png")
       const pdf = new jsPDF("p", "mm", "a4")
       
-      // Calculate dimensions to fit centered on A4
       const pageWidth = 210
       const pageHeight = 297
-      const imgWidth = 140 // Slightly narrow for clean look
+      const imgWidth = 140
       const imgHeight = (canvas.height * imgWidth) / canvas.width
       
       const x = (pageWidth - imgWidth) / 2
-      const y = 20 // Margin from top
+      const y = 20
 
       pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
       return pdf.output("blob")
@@ -134,29 +166,56 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const handleWhatsAppShare = async () => {
     setSharing(true)
     try {
-      // 1. Generate PDF
-      const pdfBlob = await generatePDFBlob()
+      // 1. Generate Receipt Image (PNG)
+      const { blob, dataUrl } = await generateImageBlob()
+      const fileName = `receipt-${receipt.receipt_number}.png`
+      const imageFile = new File([blob], fileName, { type: "image/png" })
+
+      // 2. Try copying PNG image to Clipboard for instant Ctrl+V pasting in WhatsApp Web
+      try {
+        if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ])
+        }
+      } catch (clipErr) {
+        console.log("Clipboard write image note:", clipErr)
+      }
+
+      // 3. Web Share API (Direct OS attachment on Mobile / desktop native WhatsApp)
+      if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+        await navigator.share({
+          files: [imageFile],
+          title: `Receipt #${receipt.receipt_number}`,
+          text: `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
+        })
+        return
+      }
+
+      // 4. Upload PNG image to Supabase Storage & open WhatsApp with PNG Image URL preview
+      const response = await uploadReceiptImage(blob, receipt.receipt_number)
       
-      // 2. Upload using Service
-      const response = await uploadReceiptPDF(pdfBlob, receipt.receipt_number)
+      const phone = (process.env.NEXT_PUBLIC_ALLOWED_PHONE || "").replace(/\+/g, "")
+      const publicUrl = response.success ? response.url : ""
       
-      if (!response.success) throw new Error(response.error)
-      
-      const publicUrl = response.url
-      
-      // 3. Open WhatsApp link
-      const phone = process.env.NEXT_PUBLIC_ALLOWED_PHONE || ""
-      const message = encodeURIComponent(`Download your receipt from Orchids: ${publicUrl}`)
-      const whatsappUrl = `https://wa.me/${phone.replace(/\+/g, "")}?text=${message}`
+      const textMessage = publicUrl
+        ? `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()}):\n${publicUrl}`
+        : `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
+
+      const message = encodeURIComponent(textMessage)
+      const whatsappUrl = phone
+        ? `https://wa.me/${phone}?text=${message}`
+        : `https://api.whatsapp.com/send?text=${message}`
       
       window.open(whatsappUrl, "_blank")
     } catch (error: any) {
       console.error("WhatsApp sharing failed:", error)
-      alert(`❌ WhatsApp share error: ${error.message || "Unknown error"}\n\nMake sure Supabase Storage 'receipts' bucket is public.`)
+      alert(`❌ WhatsApp share error: ${error.message || "Unknown error"}`)
     } finally {
       setSharing(false)
     }
   }
+
 
   return (
     <div className="max-w-[400px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
