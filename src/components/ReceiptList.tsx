@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { getAllReceipts } from "@/lib/receipt-service"
+import { formatReceiptNumber } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, History, ArrowRight } from "lucide-react"
@@ -63,7 +64,7 @@ export function ReceiptList({ userId, onSelect }: ReceiptListProps) {
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-primary/10 transition-colors" />
                 <div className="space-y-1.5 relative flex-1 min-w-0 mr-4">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono font-black text-primary text-xs flex-shrink-0">#{r.receipt_number.toString().padStart(4, "0")}</span>
+                    <span className="font-mono font-black text-primary text-xs flex-shrink-0">{formatReceiptNumber(r.receipt_number)}</span>
                     <p className="font-black text-base tracking-tight text-foreground group-hover:text-primary transition-colors truncate">{r.payer_name}</p>
                   </div>
                 <div className="flex items-center gap-3">

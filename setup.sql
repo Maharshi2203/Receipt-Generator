@@ -17,7 +17,10 @@ ALTER TABLE public.receipts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all operations for now" ON public.receipts;
 CREATE POLICY "Allow all operations for now" ON public.receipts FOR ALL USING (true) WITH CHECK (true);
 
--- SQL command to update existing database to start receipt numbers from 2221:
+-- SQL commands to update existing database to start receipt numbers from 2221 onwards:
+-- 1. Update existing receipt numbers (e.g. #26 becomes #2246):
+-- UPDATE public.receipts SET receipt_number = receipt_number + 2220 WHERE receipt_number < 2221;
+-- 2. Restart sequence for future receipts:
 -- ALTER TABLE public.receipts ALTER COLUMN receipt_number RESTART WITH 2221;
 
 -- Create the receipts bucket for storing PDFs and images

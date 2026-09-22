@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
-import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
+import { numberToWords, numberToGujaratiWords, getDisplayReceiptNumber, formatReceiptNumber } from "@/lib/utils"
 import { toPng, toBlob } from "html-to-image"
 import { jsPDF } from "jspdf"
 import { supabase } from "@/lib/supabase"
@@ -207,7 +207,9 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `receipt-${receipt.receipt_number}.pdf`
+      const displayNum = getDisplayReceiptNumber(receipt.receipt_number)
+      const formattedNum = formatReceiptNumber(receipt.receipt_number)
+      link.download = `receipt-${displayNum}.pdf`
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) {
@@ -221,9 +223,11 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const handleWhatsAppShare = async () => {
     setSharing(true)
     try {
+      const displayNum = getDisplayReceiptNumber(receipt.receipt_number)
+      const formattedNum = formatReceiptNumber(receipt.receipt_number)
       // 1. Generate Receipt Image (PNG)
       const { blob } = await generateImageBlob()
-      const fileName = `receipt-${receipt.receipt_number}.png`
+      const fileName = `receipt-${displayNum}.png`
       const imageFile = new File([blob], fileName, { type: "image/png" })
 
       // 2. Try copying PNG image to Clipboard for instant Ctrl+V pasting in WhatsApp Web
@@ -241,21 +245,21 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
         await navigator.share({
           files: [imageFile],
-          title: `Receipt #${receipt.receipt_number}`,
-          text: `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
+          title: `Receipt ${formattedNum}`,
+          text: `Receipt ${formattedNum} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
         })
         return
       }
 
       // 4. Upload PNG image to Supabase Storage & open WhatsApp with PNG Image URL preview
-      const response = await uploadReceiptImage(blob, receipt.receipt_number)
+      const response = await uploadReceiptImage(blob, displayNum)
       
       const phone = (process.env.NEXT_PUBLIC_ALLOWED_PHONE || "").replace(/\+/g, "")
       const publicUrl = response.success ? response.url : ""
       
       const textMessage = publicUrl
-        ? `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()}):\n${publicUrl}`
-        : `Receipt #${receipt.receipt_number} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
+        ? `Receipt ${formattedNum} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()}):\n${publicUrl}`
+        : `Receipt ${formattedNum} for ${receipt.payer_name} (₹${receipt.amount.toLocaleString()})`
 
       const message = encodeURIComponent(textMessage)
       const whatsappUrl = phone
@@ -329,7 +333,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
               <div className="flex items-center gap-2">
                 <span>નંબર:</span>
                 <span className="bg-white px-2 py-1 rounded border border-[#8B4513] text-sm">
-                  #{receipt.receipt_number.toString().padStart(4, '0')}
+                  {formatReceiptNumber(receipt.receipt_number)}
                 </span>
               </div>
               <div>
