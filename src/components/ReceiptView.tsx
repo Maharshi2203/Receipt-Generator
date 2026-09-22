@@ -32,36 +32,88 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const [downloading, setDownloading] = useState(false)
   const [scale, setScale] = useState(1)
   const [receiptHeight, setReceiptHeight] = useState<number | null>(null)
+  const [signatureUrl, setSignatureUrl] = useState("/signature.png")
 
+  // Process the signature scan on mount to be a clean transparent black PNG
   useEffect(() => {
-    if (!wrapperRef.current || !receiptRef.current) return
-
-    const handleResize = () => {
-      if (wrapperRef.current && receiptRef.current) {
-        const wrapperWidth = wrapperRef.current.getBoundingClientRect().width
-        const targetWidth = 380
-        if (wrapperWidth < targetWidth) {
-          const newScale = wrapperWidth / targetWidth
-          setScale(newScale)
-          setReceiptHeight(receiptRef.current.scrollHeight * newScale)
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = "/signature.png"
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      
+      ctx.drawImage(img, 0, 0)
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imgData.data
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i+1]
+        const b = data[i+2]
+        
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        
+        if (luminance > 180) {
+          data[i+3] = 0 // Transparent alpha
         } else {
-          setScale(1)
-          setReceiptHeight(null)
+          data[i] = 0
+          data[i+1] = 0
+          data[i+2] = 0
+          
+          const factor = (180 - luminance) / 180
+          data[i+3] = Math.min(255, Math.round(factor * 2.5 * 255))
         }
       }
+      
+      ctx.putImageData(imgData, 0, 0)
+      setSignatureUrl(canvas.toDataURL("image/png"))
     }
+  }, [])
 
-    const observer = new ResizeObserver(() => {
-      handleResize()
-    })
+  const lastWidthRef = useRef<number>(0)
+  const lastHeightRef = useRef<number>(0)
 
+  // Resize observer for scaling
+  useEffect(() => {
+    if (!wrapperRef.current || !receiptRef.current) return
+    const handleResize = () => {
+      const wrapper = wrapperRef.current
+      const receipt = receiptRef.current
+      if (!wrapper || !receipt) return
+
+      const wrapperWidth = wrapper.getBoundingClientRect().width
+      const receiptHeightUnscaled = receipt.scrollHeight
+
+      if (
+        wrapperWidth === lastWidthRef.current &&
+        receiptHeightUnscaled === lastHeightRef.current
+      ) {
+        return
+      }
+
+      lastWidthRef.current = wrapperWidth
+      lastHeightRef.current = receiptHeightUnscaled
+
+      const targetWidth = 380
+      if (wrapperWidth < targetWidth) {
+        const newScale = wrapperWidth / targetWidth
+        setScale(newScale)
+        setReceiptHeight(receiptHeightUnscaled * newScale)
+      } else {
+        setScale(1)
+        setReceiptHeight(null)
+      }
+    }
+    const observer = new ResizeObserver(handleResize)
     observer.observe(wrapperRef.current)
+    observer.observe(receiptRef.current)
     handleResize()
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [receipt])
+    return () => observer.disconnect()
+  }, [receipt, signatureUrl])
 
   const gujaratiWords = numberToGujaratiWords(Math.floor(receipt.amount))
 
@@ -118,7 +170,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     
     try {
       const canvas = await html2canvas(receiptRef.current, { 
-        scale: 3, // High resolution
+        scale: 3,
         useCORS: true,
         logging: false,
         backgroundColor: "#FDF8E8"
@@ -128,10 +180,8 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       const pdf = new jsPDF("p", "mm", "a4")
       
       const pageWidth = 210
-      const pageHeight = 297
       const imgWidth = 140
       const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
       const x = (pageWidth - imgWidth) / 2
       const y = 20
 
@@ -167,7 +217,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     setSharing(true)
     try {
       // 1. Generate Receipt Image (PNG)
-      const { blob, dataUrl } = await generateImageBlob()
+      const { blob } = await generateImageBlob()
       const fileName = `receipt-${receipt.receipt_number}.png`
       const imageFile = new File([blob], fileName, { type: "image/png" })
 
@@ -216,7 +266,6 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
     }
   }
 
-
   return (
     <div className="max-w-[400px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
       {/* Action Buttons */}
@@ -224,10 +273,12 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
         <Button
           onClick={handleWhatsAppShare}
           disabled={sharing}
-          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
+          className="h-14 rounded-2xl bg-[#25D366] hover:bg-[#128C7E] disabled:opacity-40 text-white font-bold text-xs sm:text-sm shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5 sm:gap-2 px-2"
         >
-          {sharing ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageSquare className="h-5 w-5" />}
-          WHATSAPP
+          {sharing
+            ? <><Loader2 className="h-5 w-5 animate-spin" /> Preparing...</>
+            : <><MessageSquare className="h-5 w-5" /> WHATSAPP</>
+          }
         </Button>
 
         <Button
@@ -243,13 +294,13 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       {/* Receipt Element Wrapper (Dynamic Scale to Fit Mobile Viewports) */}
       <div 
         ref={wrapperRef} 
-        className="w-full flex justify-center overflow-hidden print:overflow-visible" 
+        className="w-full flex justify-center items-start print:overflow-visible" 
         style={receiptHeight ? { height: `${receiptHeight}px` } : undefined}
       >
         <div 
           ref={receiptRef}
           id="receipt-print-area"
-          className="bg-[#FDF8E8] border-[6px] border-double border-[#8B4513] rounded-2xl p-6 shadow-2xl relative overflow-hidden flex-shrink-0"
+          className="bg-[#FDF8E8] border-[6px] border-double border-[#8B4513] rounded-2xl pt-6 px-6 pb-8 shadow-2xl relative overflow-hidden flex-shrink-0"
           style={{ 
             width: "380px", 
             transform: `scale(${scale})`, 
@@ -257,16 +308,13 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
             margin: "0 auto"
           }}
         >
-          {/* Decorative corner */}
-          <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-[#8B4513]/20 rounded-tr-xl pointer-events-none" />
-          
           <div className="space-y-6 text-[#8B4513]">
             {/* Header */}
             <div className="text-center space-y-2">
               <p className="text-[10px] font-bold tracking-widest opacity-80 uppercase">|| શ્રી અંબેમાતાય નમઃ ||</p>
               <div className="w-12 h-12 mx-auto rounded-full border-2 border-[#8B4513] flex items-center justify-center text-2xl bg-white shadow-inner">🙏</div>
               <h1 className="text-xl font-bold leading-tight">શ્રી જનકપુરી નવરાત્રી યુવક મંડળ</h1>
-              <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બનવતપુરા, હિમતનગર</p>
+              <p className="text-[10px] opacity-75">જનકપુરી સોસાયટી, બલવંતપુરા, હિંમતનગર</p>
             </div>
 
             <div className="h-px bg-[#8B4513]/30 w-full" />
@@ -322,11 +370,20 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
             </p>
 
             {/* Footer */}
-            <div className="flex justify-between items-center pt-4">
+            <div className="flex justify-between items-center -mt-5">
               <div className="w-14 h-14 rounded-full border border-dashed border-[#8B4513] flex items-center justify-center text-[8px] font-bold text-center leading-tight bg-[#8B4513]/5">
-                જનકપુરી<br/>હિમતનગર
+                જનકપુરી<br/>હિંમતનગર
               </div>
-              <div className="text-center space-y-1">
+              <div className="text-center space-y-1 flex flex-col items-center">
+                {/* Signature Image */}
+                <div className="h-10 w-24 flex items-center justify-center -mb-2 pointer-events-none">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img 
+                    src={signatureUrl} 
+                    alt="Signature" 
+                    className="h-12 object-contain"
+                  />
+                </div>
                 <div className="w-24 h-px bg-[#8B4513]/50 mx-auto" />
                 <p className="text-[10px] font-bold">પ્રમુખ / મંત્રી</p>
               </div>

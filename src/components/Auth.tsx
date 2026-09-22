@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Phone, ArrowRight, Loader2, AlertCircle, Receipt as ReceiptIcon } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function Auth({ onLoginSuccess }: { onLoginSuccess: () => void }) {
@@ -44,7 +43,7 @@ export function Auth({ onLoginSuccess }: { onLoginSuccess: () => void }) {
   }
 
       return (
-        <div className="flex min-h-screen items-center justify-center p-6" style={{ backgroundColor: '#FBE580' }}>
+        <div className="flex min-h-[100dvh] items-center justify-center p-6" style={{ backgroundColor: '#FBE580' }}>
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-accent/10 pointer-events-none" />
           <Card className="w-full max-w-md border-black/5 overflow-hidden animate-in fade-in zoom-in-95 duration-1000 shadow-2xl rounded-[2.5rem]">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
