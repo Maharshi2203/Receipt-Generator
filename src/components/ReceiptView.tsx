@@ -329,7 +329,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
               <div className="flex items-center gap-2">
                 <span>નંબર:</span>
                 <span className="bg-white px-2 py-1 rounded border border-[#8B4513] text-sm">
-                  #{receipt.receipt_number.toString().padStart(3, '0')}
+                  #{receipt.receipt_number.toString().padStart(4, '0')}
                 </span>
               </div>
               <div>
