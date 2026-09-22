@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
 import { numberToWords, numberToGujaratiWords } from "@/lib/utils"
-import html2canvas from "html2canvas"
+import { toPng, toBlob } from "html-to-image"
 import { jsPDF } from "jspdf"
 import { supabase } from "@/lib/supabase"
 import { uploadReceiptPDF, uploadReceiptImage } from "@/lib/receipt-service"
@@ -128,70 +128,75 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const generateImageBlob = async (): Promise<{ blob: Blob; dataUrl: string }> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
     
-    const prevTransform = receiptRef.current.style.transform
-    const prevTransformOrigin = receiptRef.current.style.transformOrigin
+    const el = receiptRef.current
+    const prevTransform = el.style.transform
+    const prevTransformOrigin = el.style.transformOrigin
     
-    receiptRef.current.style.transform = "none"
-    receiptRef.current.style.transformOrigin = "initial"
+    el.style.transform = "none"
+    el.style.transformOrigin = "initial"
     
     try {
-      const canvas = await html2canvas(receiptRef.current, { 
-        scale: 3, // High resolution
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#FDF8E8"
+      await document.fonts.ready
+
+      const dataUrl = await toPng(el, {
+        pixelRatio: 2,
+        backgroundColor: "#FDF8E8",
+        style: { transform: "none", transformOrigin: "initial" }
       })
 
-      const dataUrl = canvas.toDataURL("image/png")
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b)
-          else reject(new Error("Failed to capture receipt image"))
-        }, "image/png")
+      const blob = await toBlob(el, {
+        pixelRatio: 2,
+        backgroundColor: "#FDF8E8",
+        style: { transform: "none", transformOrigin: "initial" }
       })
+
+      if (!blob) throw new Error("Failed to capture receipt image blob")
 
       return { blob, dataUrl }
     } finally {
-      if (receiptRef.current) {
-        receiptRef.current.style.transform = prevTransform
-        receiptRef.current.style.transformOrigin = prevTransformOrigin
-      }
+      el.style.transform = prevTransform
+      el.style.transformOrigin = prevTransformOrigin
     }
   }
 
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!receiptRef.current) throw new Error("Receipt element not found")
     
-    const prevTransform = receiptRef.current.style.transform
-    const prevTransformOrigin = receiptRef.current.style.transformOrigin
+    const el = receiptRef.current
+    const prevTransform = el.style.transform
+    const prevTransformOrigin = el.style.transformOrigin
     
-    receiptRef.current.style.transform = "none"
-    receiptRef.current.style.transformOrigin = "initial"
+    el.style.transform = "none"
+    el.style.transformOrigin = "initial"
     
     try {
-      const canvas = await html2canvas(receiptRef.current, { 
-        scale: 3,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#FDF8E8"
+      await document.fonts.ready
+
+      const dataUrl = await toPng(el, {
+        pixelRatio: 2,
+        backgroundColor: "#FDF8E8",
+        style: { transform: "none", transformOrigin: "initial" }
       })
 
-      const imgData = canvas.toDataURL("image/png")
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = reject
+        image.src = dataUrl
+      })
+
       const pdf = new jsPDF("p", "mm", "a4")
-      
       const pageWidth = 210
       const imgWidth = 140
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      const imgHeight = (img.naturalHeight * imgWidth) / img.naturalWidth
       const x = (pageWidth - imgWidth) / 2
       const y = 20
 
-      pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight)
+      pdf.addImage(dataUrl, "PNG", x, y, imgWidth, imgHeight)
       return pdf.output("blob")
     } finally {
-      if (receiptRef.current) {
-        receiptRef.current.style.transform = prevTransform
-        receiptRef.current.style.transformOrigin = prevTransformOrigin
-      }
+      el.style.transform = prevTransform
+      el.style.transformOrigin = prevTransformOrigin
     }
   }
 
