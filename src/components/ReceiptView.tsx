@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, FileText, Loader2, ArrowLeft } from "lucide-react"
-import { numberToWords, numberToGujaratiWords, getDisplayReceiptNumber, formatReceiptNumber } from "@/lib/utils"
+import { numberToWords, numberToGujaratiWords, formatReceiptNumber } from "@/lib/utils"
 import { toPng, toBlob } from "html-to-image"
 import { jsPDF } from "jspdf"
 import { supabase } from "@/lib/supabase"
@@ -207,9 +207,8 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      const displayNum = getDisplayReceiptNumber(receipt.receipt_number)
       const formattedNum = formatReceiptNumber(receipt.receipt_number)
-      link.download = `receipt-${displayNum}.pdf`
+      link.download = `receipt-${receipt.receipt_number}.pdf`
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) {
@@ -223,11 +222,10 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
   const handleWhatsAppShare = async () => {
     setSharing(true)
     try {
-      const displayNum = getDisplayReceiptNumber(receipt.receipt_number)
       const formattedNum = formatReceiptNumber(receipt.receipt_number)
       // 1. Generate Receipt Image (PNG)
       const { blob } = await generateImageBlob()
-      const fileName = `receipt-${displayNum}.png`
+      const fileName = `receipt-${receipt.receipt_number}.png`
       const imageFile = new File([blob], fileName, { type: "image/png" })
 
       // 2. Try copying PNG image to Clipboard for instant Ctrl+V pasting in WhatsApp Web
@@ -252,7 +250,7 @@ export function ReceiptView({ receipt, onClose }: ReceiptViewProps) {
       }
 
       // 4. Upload PNG image to Supabase Storage & open WhatsApp with PNG Image URL preview
-      const response = await uploadReceiptImage(blob, displayNum)
+      const response = await uploadReceiptImage(blob, receipt.receipt_number)
       
       const phone = (process.env.NEXT_PUBLIC_ALLOWED_PHONE || "").replace(/\+/g, "")
       const publicUrl = response.success ? response.url : ""

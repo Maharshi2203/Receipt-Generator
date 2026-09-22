@@ -5,14 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function getDisplayReceiptNumber(num: number | undefined | null): number {
-  if (!num) return 2221
-  return num < 2221 ? num + 2220 : num
-}
-
 export function formatReceiptNumber(num: number | undefined | null): string {
-  const displayNum = getDisplayReceiptNumber(num)
-  return `#${displayNum.toString().padStart(4, "0")}`
+  if (num === undefined || num === null) return "#2221"
+  return `#${num.toString().padStart(4, "0")}`
 }
 
 export function numberToWords(num: number): string {
